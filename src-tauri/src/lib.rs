@@ -42,8 +42,8 @@ pub fn run() {
         .setup(|app| {
             let directory = app.path().app_local_data_dir()?;
             std::fs::create_dir_all(&directory)?;
-            let store = Store::open(&directory.join("netcontrol.sqlite"))
-                .map_err(std::io::Error::other)?;
+            let store =
+                Store::open(&directory.join("netcontrol.sqlite")).map_err(std::io::Error::other)?;
             app.manage(AppState(Mutex::new(store)));
             Ok(())
         })
