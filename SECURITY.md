@@ -1,7 +1,7 @@
 # Security policy
 
-NetControl is under active development. No stable release has been published yet.
-Security fixes will target the latest release and the default branch.
+Security fixes target the latest published NetControl release and the default branch.
+Earlier versions may not receive fixes; use the latest available release.
 
 ## Reporting a vulnerability
 
