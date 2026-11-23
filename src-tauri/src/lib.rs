@@ -54,12 +54,12 @@ fn get_history(from:String,to:String,state:tauri::State<Arc<AppState>>)->Result<
 #[tauri::command]
 fn set_paused(paused:bool,state:tauri::State<Arc<AppState>>)->Result<(),String>{
     let mut m=state.monitor.lock().map_err(|e|e.to_string())?;let mut store=state.store.lock().map_err(|e|e.to_string())?;
-    monitoring::flush(&mut m,&mut store)?;m.snapshot.paused=paused;m.snapshot.points.clear();Ok(())
+    monitoring::flush(&mut m,&mut store)?;m.epoch=m.epoch.wrapping_add(1);m.snapshot.paused=paused;m.snapshot.points.clear();Ok(())
 }
 #[tauri::command]
 fn reset_history(state:tauri::State<Arc<AppState>>)->Result<(),String>{
     let mut m=state.monitor.lock().map_err(|e|e.to_string())?;let mut store=state.store.lock().map_err(|e|e.to_string())?;
-    store.reset()?;m.pending.clear();m.snapshot.points.clear();m.snapshot.applications.clear();if let Ok(mut map)=m.incoming.lock(){map.clear();}Ok(())
+    store.reset()?;m.epoch=m.epoch.wrapping_add(1);m.pending.clear();m.snapshot.points.clear();m.snapshot.applications.clear();if let Ok(mut map)=m.incoming.lock(){map.clear();}Ok(())
 }
 #[tauri::command]
 async fn enable_attribution(state:tauri::State<'_,Arc<AppState>>)->Result<(),String>{let state=state.inner().clone();tauri::async_runtime::spawn_blocking(move||attribution::enable(state)).await.map_err(|e|e.to_string())?}
@@ -101,7 +101,7 @@ pub fn run(){
             let exit=MenuItem::with_id(app,"exit","Exit",true,None::<&str>)?;
             let menu=Menu::with_items(app,&[&open,&pause,&resume,&exit])?;
             TrayIconBuilder::with_id("main").icon(app.default_window_icon().ok_or("Missing tray icon")?.clone()).tooltip("NetControl").menu(&menu).show_menu_on_left_click(false)
-                .on_menu_event(|app,event|match event.id.as_ref(){"open"=>show(app),"pause"|"resume"=>{let state=app.state::<Arc<AppState>>();if let Ok(mut m)=state.monitor.lock(){m.snapshot.paused=event.id.as_ref()=="pause";m.snapshot.points.clear();}},"exit"=>app.exit(0),_=>{}})
+                .on_menu_event(|app,event|match event.id.as_ref(){"open"=>show(app),"pause"|"resume"=>{let state=app.state::<Arc<AppState>>();if let Ok(mut m)=state.monitor.lock(){m.epoch=m.epoch.wrapping_add(1);m.snapshot.paused=event.id.as_ref()=="pause";m.snapshot.points.clear();}},"exit"=>app.exit(0),_=>{}})
                 .on_tray_icon_event(|tray,event|{if matches!(event,TrayIconEvent::DoubleClick{..}){show(tray.app_handle());}}).build(app)?;
             if settings.start_minimized{if let Some(window)=app.get_webview_window("main"){window.hide()?;}}
             monitoring::start(state,app.handle().clone());Ok(())

@@ -14,6 +14,7 @@ pub fn validate_path(path:&str,blocking:bool)->Result<String,String>{
     let resolved=if original.exists(){std::fs::canonicalize(original).map_err(|e|e.to_string())?.to_string_lossy().trim_start_matches("\\\\?\\").to_string()}else if blocking{return Err("The executable does not exist".into())}else{path.into()};
     if !resolved.get(1..3).is_some_and(|s|s==":\\") {return Err("Network and device paths are not supported".into());}
     if blocking {
+        if !Path::new(&resolved).is_file(){return Err("Choose an executable file".into());}
         let mut buffer=[0u16;32768];
         let n=unsafe{windows::Win32::System::SystemInformation::GetWindowsDirectoryW(Some(&mut buffer))} as usize;
         if n==0 || n>=buffer.len(){return Err("Could not verify the Windows system directory".into());}
@@ -30,7 +31,7 @@ pub fn blocked_paths(paths:&[String])->Result<Vec<String>,String>{
     unsafe{
         let policy:INetFwPolicy2=CoCreateInstance(&NetFwPolicy2,None,CLSCTX_INPROC_SERVER).map_err(|e|e.to_string())?;
         let rules=policy.Rules().map_err(|e|e.to_string())?;
-        Ok(paths.iter().filter(|path|rules.Item(&BSTR::from(rule_id(path))).is_ok_and(|r|owns(&r,path)&&r.Enabled().is_ok_and(|v|v.0!=0)&&r.Action().is_ok_and(|v|v==NET_FW_ACTION_BLOCK)&&r.Direction().is_ok_and(|v|v==NET_FW_RULE_DIR_OUT))).cloned().collect())
+        Ok(paths.iter().filter(|path|rules.Item(&BSTR::from(rule_id(path).as_str())).is_ok_and(|r|owns(&r,path)&&r.Enabled().is_ok_and(|v|v.0!=0)&&r.Action().is_ok_and(|v|v==NET_FW_ACTION_BLOCK)&&r.Direction().is_ok_and(|v|v==NET_FW_RULE_DIR_OUT))).cloned().collect())
     }
 }
 pub fn apply(path:&str,blocking:bool)->Result<(),String>{
@@ -39,14 +40,14 @@ pub fn apply(path:&str,blocking:bool)->Result<(),String>{
     unsafe{
         let policy:INetFwPolicy2=CoCreateInstance(&NetFwPolicy2,None,CLSCTX_INPROC_SERVER).map_err(|e|e.to_string())?;
         let rules=policy.Rules().map_err(|e|e.to_string())?;
-        let id=BSTR::from(rule_id(&path));
+        let id=BSTR::from(rule_id(&path).as_str());
         if let Ok(existing)=rules.Item(&id){
             if !owns(&existing,&path){return Err("A different rule uses this identifier; it was preserved".into());}
             if !blocking {return rules.Remove(&id).map_err(|e|e.to_string());}
         }else if !blocking{return Ok(())}
         let rule:INetFwRule=CoCreateInstance(&NetFwRule,None,CLSCTX_INPROC_SERVER).map_err(|e|e.to_string())?;
         rule.SetName(&id).map_err(|e|e.to_string())?;
-        rule.SetApplicationName(&BSTR::from(&path)).map_err(|e|e.to_string())?;
+        rule.SetApplicationName(&BSTR::from(path.as_str())).map_err(|e|e.to_string())?;
         rule.SetGrouping(&BSTR::from(GROUP)).map_err(|e|e.to_string())?;
         rule.SetDescription(&BSTR::from("Outbound restriction created by NetControl. Remove it through NetControl or Windows Firewall.")).map_err(|e|e.to_string())?;
         rule.SetProtocol(256).map_err(|e|e.to_string())?;
@@ -85,4 +86,23 @@ mod tests{
     use super::*;
     #[test]fn rejects_shell_and_network_paths(){for p in ["relative.exe","\\\\server\\x.exe","C:\\app.exe\n","C:\\a\".exe"]{assert!(validate_path(p,true).is_err());}}
     #[test]fn rule_identity_is_case_insensitive(){assert_eq!(rule_id("C:\\App.exe"),rule_id("c:\\app.EXE"));assert_ne!(rule_id("C:\\App.exe"),rule_id("C:\\Other.exe"));}
+}
+#[cfg(test)]
+mod native_tests {
+    use super::*;
+    struct Cleanup(String);
+    impl Drop for Cleanup{fn drop(&mut self){let _=apply(&self.0,false);let _=std::fs::remove_file(&self.0);}}
+    #[test]
+    #[ignore = "Requires administrator rights to create and remove a disposable firewall rule"]
+    fn creates_and_removes_only_its_disposable_rule(){
+        let path=std::env::temp_dir().join(format!("netcontrol-firewall-test-{}.exe",uuid::Uuid::new_v4()));
+        std::fs::write(&path,[]).unwrap();
+        let path=path.to_string_lossy().to_string();let _cleanup=Cleanup(path.clone());
+        assert!(blocked_paths(std::slice::from_ref(&path)).unwrap().is_empty());
+        apply(&path,true).unwrap();
+        assert_eq!(blocked_paths(std::slice::from_ref(&path)).unwrap(),vec![path.clone()]);
+        apply(&path,false).unwrap();
+        assert!(blocked_paths(std::slice::from_ref(&path)).unwrap().is_empty());
+        apply(&path,false).unwrap();
+    }
 }

@@ -26,6 +26,7 @@ pub struct Snapshot {
 pub struct Monitor {
     pub snapshot: Snapshot,
     pub pending: Vec<Interval>,
+    pub epoch: u64,
     pub incoming: Arc<Mutex<HashMap<String, (u64,u64)>>>,
     pub helper_active: Arc<std::sync::atomic::AtomicBool>,
     pub helper_stop: Arc<std::sync::atomic::AtomicBool>,
@@ -33,7 +34,7 @@ pub struct Monitor {
 impl Default for Monitor {
     fn default() -> Self { Self {
         snapshot: Snapshot { paused:false,adapter:String::new(),adapters:vec![],points:VecDeque::new(),download:0.0,upload:0.0,status:"Starting".into(),attribution:"Disabled".into(),applications:vec![],error:String::new() },
-        pending:vec![],incoming:Arc::new(Mutex::new(HashMap::new())),
+        pending:vec![],epoch:0,incoming:Arc::new(Mutex::new(HashMap::new())),
         helper_active:Arc::new(std::sync::atomic::AtomicBool::new(false)),helper_stop:Arc::new(std::sync::atomic::AtomicBool::new(false)),
     } }
 }
@@ -50,7 +51,7 @@ pub fn flush(m: &mut Monitor, store: &mut Store) -> Result<(),String> {
 pub fn start(state: Arc<crate::AppState>, app: tauri::AppHandle) {
     std::thread::spawn(move || {
         let mut networks=Networks::new_with_refreshed_list();
-        let mut baseline: Option<(String,u64,u64,Instant,i64,String,i32)>=None;
+        let mut baseline: Option<(String,u64,u64,Instant,i64,String,i32,u64)>=None;
         let mut cleanup=Instant::now()-Duration::from_secs(3600);
         loop {
             std::thread::sleep(Duration::from_secs(1));
@@ -81,9 +82,9 @@ pub fn start(state: Arc<crate::AppState>, app: tauri::AppHandle) {
             let (name,network)=selected.unwrap();
             let rx=network.total_received();let tx=network.total_transmitted();
             m.snapshot.adapter=name.clone();m.snapshot.status="Monitoring".into();
-            if let Some((prior,prx,ptx,timestamp,start,prior_date,prior_offset))=baseline.take() {
+            if let Some((prior,prx,ptx,timestamp,start,prior_date,prior_offset,epoch))=baseline.take() {
                 let elapsed=instant.duration_since(timestamp); let ms=elapsed.as_millis() as u64;
-                if prior==name && (500..=5000).contains(&ms) && prior_date==date && prior_offset==offset {
+                if epoch==m.epoch && prior==name && (500..=5000).contains(&ms) && prior_date==date && prior_offset==offset {
                     if let (Some(downloaded),Some(uploaded))=(delta(prx,rx),delta(ptx,tx)) {
                         m.snapshot.download=downloaded as f64/elapsed.as_secs_f64();m.snapshot.upload=uploaded as f64/elapsed.as_secs_f64();
                         let point=Point{time:now.timestamp_millis(),download:m.snapshot.download,upload:m.snapshot.upload};
@@ -94,7 +95,7 @@ pub fn start(state: Arc<crate::AppState>, app: tauri::AppHandle) {
                     } else {m.snapshot.download=0.0;m.snapshot.upload=0.0;m.snapshot.points.clear();}
                 } else {m.snapshot.download=0.0;m.snapshot.upload=0.0;m.snapshot.points.clear();}
             }
-            baseline=Some((name,rx,tx,instant,now.timestamp_millis(),date,offset));
+            baseline=Some((name,rx,tx,instant,now.timestamp_millis(),date,offset,m.epoch));
             if m.pending.len()>=5 {if let Err(e)=flush(&mut m,&mut store){m.snapshot.error=e;}}
             // Bound memory if the database becomes unwritable; surface the accounting gap.
             if m.pending.len()>60 {m.pending.clear();m.snapshot.error="Storage unavailable: recent measurements could not be saved".into();}

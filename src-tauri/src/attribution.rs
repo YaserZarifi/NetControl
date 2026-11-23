@@ -95,3 +95,29 @@ pub fn enable(state:Arc<crate::AppState>)->Result<(),String>{
     });
     Ok(())
 }
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    #[ignore = "Requires an administrator account and Windows kernel event tracing"]
+    fn attributes_real_tcp_and_udp_transfers() {
+        let data=Arc::new(Mutex::new(HashMap::new()));let failures=Arc::new(AtomicBool::new(false));
+        let tcp=Provider::kernel(&kernel_providers::TCP_IP_PROVIDER).add_callback(callback(data.clone(),failures.clone())).build();
+        let mut udp=KernelProvider{guid:Default::default(),flags:0x10000};udp.guid.data1=0xbf3a50c5;udp.guid.data2=0xa9c9;udp.guid.data3=0x4988;udp.guid.data4=[0xa0,0x05,0x2d,0xf0,0xb7,0xc8,0x0f,0x80];
+        let udp=Provider::kernel(&udp).add_callback(callback(data.clone(),failures.clone())).build();
+        let trace=KernelTrace::new().named(format!("NetControl-test-{}",uuid::Uuid::new_v4().simple())).enable(tcp).enable(udp).start_and_process().expect("Start ETW");
+        std::thread::sleep(Duration::from_secs(1));
+        let listener=TcpListener::bind("127.0.0.1:0").unwrap();let address=listener.local_addr().unwrap();
+        let receiver=std::thread::spawn(move||{let(mut socket,_)=listener.accept().unwrap();let mut bytes=Vec::new();socket.read_to_end(&mut bytes).unwrap();assert_eq!(bytes.len(),1048576);});
+        let mut sender=TcpStream::connect(address).unwrap();sender.write_all(&vec![42u8;1048576]).unwrap();drop(sender);receiver.join().unwrap();
+        let server=std::net::UdpSocket::bind("127.0.0.1:0").unwrap();server.set_read_timeout(Some(Duration::from_secs(3))).unwrap();let destination=server.local_addr().unwrap();
+        let client=std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
+        for _ in 0..20{client.send_to(&[7u8;1024],destination).unwrap();let mut buf=[0u8;2048];assert_eq!(server.recv(&mut buf).unwrap(),1024);}
+        std::thread::sleep(Duration::from_secs(3));trace.stop().unwrap();
+        assert!(!failures.load(Ordering::Relaxed),"Windows event parsing failed");
+        let map=data.lock().unwrap();
+        let own=std::env::current_exe().unwrap().to_string_lossy().trim_start_matches("\\\\?\\").to_string();
+        let own_bytes=map.iter().filter(|(path,_)|path.eq_ignore_ascii_case(&own)).map(|(_,v)|v.0+v.1).sum::<u64>();
+        assert!(own_bytes>=1048576,"Expected attributed transfer bytes; got {own_bytes}, observed paths: {:?}",map.keys().collect::<Vec<_>>());
+    }
+}
