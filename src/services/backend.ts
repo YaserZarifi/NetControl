@@ -31,6 +31,7 @@ export type Snapshot = {
   status: string;
   attribution: string;
   applications: AppUsage[];
+  applicationIntervalMs: number;
   error: string;
 };
 export type History = {
@@ -86,6 +87,7 @@ export async function snapshot(): Promise<Snapshot> {
         status: "Browser preview",
         attribution: "Desktop required",
         applications: [],
+        applicationIntervalMs: 0,
         error: "",
       };
 }

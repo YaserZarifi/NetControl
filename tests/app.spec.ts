@@ -65,12 +65,16 @@ async function desktopBridge(page: Page) {
             adapters: [
               { name: "Test adapter", virtualAdapter: false, online: true },
             ],
-            points: [],
+            points: [
+              { time: Date.now() - 1000, download: 0, upload: 0 },
+              { time: Date.now(), download: 0, upload: 0 },
+            ],
             download: 0,
             upload: 0,
             status: "Monitoring",
             attribution: "Disabled",
-            applications: [],
+            applications: [{ path, downloaded: 2048, uploaded: 512 }],
+            applicationIntervalMs: 2000,
             error: "",
           };
         if (cmd === "get_history")
@@ -100,7 +104,11 @@ test("desktop firewall confirmation sends a scoped command and shows the resulti
 }) => {
   await desktopBridge(page);
   await page.goto("/");
+  await expect(page.locator(".recharts-wrapper")).toBeVisible();
   await page.getByRole("button", { name: "Applications", exact: true }).click();
+  await expect(
+    page.getByText("1.0 KB/s down / 256 B/s up", { exact: true }),
+  ).toBeVisible();
   await page.getByRole("button", { name: "Block", exact: true }).click();
   await expect(
     page.getByRole("dialog", { name: "Block outbound network access?" }),

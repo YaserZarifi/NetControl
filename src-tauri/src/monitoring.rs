@@ -48,6 +48,7 @@ pub struct Snapshot {
     pub status: String,
     pub attribution: String,
     pub applications: Vec<AppUsage>,
+    pub application_interval_ms: u64,
     pub error: String,
 }
 pub type ByteMap = Arc<Mutex<HashMap<String, (u64, u64)>>>;
@@ -74,6 +75,7 @@ impl Default for Monitor {
                 status: "Starting".into(),
                 attribution: "Disabled".into(),
                 applications: vec![],
+                application_interval_ms: 0,
                 error: String::new(),
             },
             pending: vec![],
@@ -202,6 +204,7 @@ pub fn start(state: Arc<crate::AppState>, app: tauri::AppHandle) {
                     uploaded,
                 })
                 .collect();
+            m.snapshot.application_interval_ms = 0;
             if active && !m.snapshot.paused {
                 if let Some((stamp, prior_date, prior_offset, epoch)) = app_baseline.take() {
                     if instant.duration_since(stamp) <= Duration::from_secs(5)
@@ -210,6 +213,8 @@ pub fn start(state: Arc<crate::AppState>, app: tauri::AppHandle) {
                         && epoch == m.epoch
                         && !m.snapshot.applications.is_empty()
                     {
+                        m.snapshot.application_interval_ms =
+                            instant.duration_since(stamp).as_millis() as u64;
                         let apps = m.snapshot.applications.clone();
                         m.pending_apps.push(AppInterval {
                             date: date.clone(),

@@ -253,7 +253,7 @@ export default function App() {
             <th>Uploaded</th>
             {controls && (
               <>
-                <th>Current interval</th>
+                <th>Current rate</th>
                 <th>NetControl rule</th>
                 <th>Action</th>
               </>
@@ -267,6 +267,7 @@ export default function App() {
                 (path) => path.toLowerCase() === a.path.toLowerCase(),
               );
               const current = live?.applications.find((x) => x.path === a.path);
+              const seconds = (live?.applicationIntervalMs ?? 0) / 1000;
               return (
                 <tr key={a.path}>
                   <td>
@@ -283,8 +284,8 @@ export default function App() {
                   {controls && (
                     <>
                       <td>
-                        {current
-                          ? `${fmt(current.downloaded)} down / ${fmt(current.uploaded)} up`
+                        {current && seconds > 0
+                          ? `${fmt(current.downloaded / seconds)}/s down / ${fmt(current.uploaded / seconds)}/s up`
                           : "No recent events"}
                       </td>
                       <td>
