@@ -1,6 +1,8 @@
 # Validation
 
-No Windows-native or frontend checks have passed yet. Local Rust is deliberately absent. Use Windows Actions for native builds; do not install development toolchains on the user's computer.
+Local validation on 2026-11-23 passed TypeScript, ESLint, and the production frontend build. Dependency installation reported zero known vulnerabilities. A SQLite smoke check passed the initial migration and rejection of negative download/upload counters. Regenerating the application icon produced identical output.
+
+Windows-native checks remain pending. Local Rust is deliberately absent. Use Windows Actions for native builds; do not install development toolchains on the user's computer.
 
 ## Automated checks
 
@@ -10,7 +12,7 @@ No Windows-native or frontend checks have passed yet. Local Rust is deliberately
 - Rust lint: `cargo clippy --manifest-path src-tauri/Cargo.toml --locked --all-targets -- -D warnings`.
 - Persistence, validation, repeat migration, and invalid-write tests: `cargo test --manifest-path src-tauri/Cargo.toml --locked`.
 
-The initial source still requires rustfmt verification on a runner. If formatting fails, run rustfmt on GitHub's runner and commit its output before rerunning packaging. Preserve exact failure logs; never bypass failed checks to release.
+The Rust source still requires rustfmt verification on a runner. If formatting fails, run rustfmt on GitHub's runner and commit its output before rerunning packaging. Preserve exact failure logs; never bypass failed checks to release.
 
 ## Windows acceptance matrix (all pending)
 

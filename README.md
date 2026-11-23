@@ -4,7 +4,7 @@ A local-first Windows 10/11 network usage utility built with Tauri 2, Rust, Reac
 
 ## Current status
 
-Milestone 1 implementation in progress. The four-screen shell and preferences are implemented. Desktop startup, installer output, Rust tests, and resource usage have not yet been validated. Monitoring, application attribution, firewall control, tray, startup integration, and historical export are not implemented in this build. The interface shows unavailable states instead of fabricated measurements.
+Milestone 1 implementation in progress. The four-screen shell and preferences are implemented. TypeScript, ESLint, and the production frontend build passed locally on 2026-11-23. Desktop startup, installer output, Rust tests, and resource usage have not yet been validated. Monitoring, application attribution, firewall control, tray, startup integration, and historical export are not implemented in this build. The interface shows unavailable states instead of fabricated measurements.
 
 ## Develop without installing Rust
 
