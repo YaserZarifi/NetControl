@@ -119,10 +119,16 @@ pub struct AppUsage {
 }
 
 impl Store {
-    pub fn record(&mut self, samples: &[crate::monitoring::Interval]) -> Result<(), String> {
+    pub fn record(
+        &mut self,
+        samples: &[crate::monitoring::Interval],
+        app_samples: &[crate::monitoring::AppInterval],
+    ) -> Result<(), String> {
         let tx = self.0.transaction().map_err(|e| e.to_string())?;
         for s in samples {
             tx.execute("INSERT INTO traffic_intervals(start_utc_ms,end_utc_ms,local_date,utc_offset_seconds,adapter_id,downloaded_bytes,uploaded_bytes,coverage_ms) VALUES(?1,?2,?3,?4,?5,?6,?7,?8)",params![s.start,s.end,s.date,s.offset,s.adapter,s.downloaded as i64,s.uploaded as i64,s.coverage as i64]).map_err(|e|e.to_string())?;
+        }
+        for s in app_samples {
             for app in &s.apps {
                 tx.execute("INSERT INTO app_daily(local_date,path,downloaded_bytes,uploaded_bytes) VALUES(?1,?2,?3,?4) ON CONFLICT(local_date,path) DO UPDATE SET downloaded_bytes=downloaded_bytes+excluded.downloaded_bytes,uploaded_bytes=uploaded_bytes+excluded.uploaded_bytes",params![s.date,app.path,app.downloaded as i64,app.uploaded as i64]).map_err(|e|e.to_string())?;
             }
@@ -297,13 +303,16 @@ mod accounting_tests {
             downloaded: 100,
             uploaded: 20,
             coverage: 1000,
+        };
+        let app_sample = crate::monitoring::AppInterval {
+            date: "2026-11-23".into(),
             apps: vec![AppUsage {
                 path: path.into(),
-                downloaded: 60,
-                uploaded: 10,
+                downloaded: 120,
+                uploaded: 20,
             }],
         };
-        store.record(&[sample.clone(), sample]).unwrap();
+        store.record(&[sample.clone(), sample], &[app_sample]).unwrap();
         let day = store.history("2026-11-23", "2026-11-23").unwrap();
         assert_eq!(
             (day[0].downloaded, day[0].uploaded, day[0].coverage_ms),
@@ -322,6 +331,22 @@ mod accounting_tests {
             .is_empty());
         assert_eq!(store.settings().unwrap(), settings);
         assert_eq!(store.rule_paths().unwrap(), vec![path]);
+    }
+    #[test]
+    fn records_applications_without_an_available_adapter() {
+        let mut store = Store::open(Path::new(":memory:")).unwrap();
+        let sample = crate::monitoring::AppInterval {
+            date: "2026-11-23".into(),
+            apps: vec![AppUsage {
+                path: "C:\\Example\\app.exe".into(),
+                downloaded: 4096,
+                uploaded: 1024,
+            }],
+        };
+        store.record(&[], &[sample]).unwrap();
+        assert!(store.history("2026-11-23", "2026-11-23").unwrap().is_empty());
+        let apps = store.applications("2026-11-23", "2026-11-23").unwrap();
+        assert_eq!((apps[0].downloaded, apps[0].uploaded), (4096, 1024));
     }
     #[test]
     fn loads_legacy_preferences_with_new_defaults() {

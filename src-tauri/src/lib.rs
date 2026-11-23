@@ -190,6 +190,7 @@ fn reset_history(state: tauri::State<Arc<AppState>>) -> Result<(), String> {
     store.reset()?;
     m.epoch = m.epoch.wrapping_add(1);
     m.pending.clear();
+    m.pending_apps.clear();
     m.snapshot.points.clear();
     m.snapshot.applications.clear();
     if let Ok(mut map) = m.incoming.lock() {

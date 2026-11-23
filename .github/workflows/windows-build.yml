@@ -67,7 +67,12 @@ jobs:
         shell: pwsh
         run: |
           cargo fmt --manifest-path src-tauri/Cargo.toml --check 2>&1 | Tee-Object rustfmt.log
-          exit $LASTEXITCODE
+          $formatExit = $LASTEXITCODE
+          if ($formatExit -ne 0) {
+            cargo fmt --manifest-path src-tauri/Cargo.toml
+            git diff --binary -- src-tauri > rustfmt.patch
+          }
+          exit $formatExit
       - name: Build frontend for Rust context
         run: npm run build
       - name: Check Rust
@@ -113,6 +118,7 @@ jobs:
             THIRD_PARTY_NOTICES.txt
             installed-app-smoke.json
             rustfmt.log
+            rustfmt.patch
             package-lock.json
             src-tauri/Cargo.lock
             src-tauri/target/**/build/netcontrol-*/output

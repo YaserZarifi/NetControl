@@ -31,6 +31,9 @@ pub struct Interval {
     pub downloaded: u64,
     pub uploaded: u64,
     pub coverage: u64,
+}
+pub struct AppInterval {
+    pub date: String,
     pub apps: Vec<AppUsage>,
 }
 #[derive(Clone, Serialize)]
@@ -52,6 +55,7 @@ type Baseline = (String, u64, u64, Instant, i64, String, i32, u64);
 pub struct Monitor {
     pub snapshot: Snapshot,
     pub pending: Vec<Interval>,
+    pub pending_apps: Vec<AppInterval>,
     pub epoch: u64,
     pub incoming: ByteMap,
     pub helper_active: Arc<std::sync::atomic::AtomicBool>,
@@ -73,6 +77,7 @@ impl Default for Monitor {
                 error: String::new(),
             },
             pending: vec![],
+            pending_apps: vec![],
             epoch: 0,
             incoming: Arc::new(Mutex::new(HashMap::new())),
             helper_active: Arc::new(std::sync::atomic::AtomicBool::new(false)),
@@ -103,15 +108,18 @@ fn is_virtual(name: &str) -> bool {
     .any(|s| name.contains(s))
 }
 pub fn flush(m: &mut Monitor, store: &mut Store) -> Result<(), String> {
-    if !m.pending.is_empty() {
-        store.record(&m.pending)?;
+    if !m.pending.is_empty() || !m.pending_apps.is_empty() {
+        store.record(&m.pending, &m.pending_apps)?;
         m.pending.clear();
+        m.pending_apps.clear();
     }
     Ok(())
 }
 pub fn start(state: Arc<crate::AppState>, app: tauri::AppHandle) {
     std::thread::spawn(move || {
         let mut baseline: Option<Baseline> = None;
+        let mut app_baseline: Option<(Instant, String, i32, u64)> = None;
+        let mut last_flush = Instant::now();
         let mut cleanup = Instant::now() - Duration::from_secs(3600);
         loop {
             std::thread::sleep(Duration::from_secs(1));
@@ -135,7 +143,7 @@ pub fn start(state: Arc<crate::AppState>, app: tauri::AppHandle) {
                     m.snapshot.upload = 0.0;
                     m.snapshot.points.clear();
                     baseline = None;
-                    continue;
+                    HashMap::new()
                 }
             };
             let settings = match store.settings() {
@@ -194,6 +202,35 @@ pub fn start(state: Arc<crate::AppState>, app: tauri::AppHandle) {
                     uploaded,
                 })
                 .collect();
+            if active && !m.snapshot.paused {
+                if let Some((stamp, prior_date, prior_offset, epoch)) = app_baseline.take() {
+                    if instant.duration_since(stamp) <= Duration::from_secs(5)
+                        && prior_date == date
+                        && prior_offset == offset
+                        && epoch == m.epoch
+                        && !m.snapshot.applications.is_empty()
+                    {
+                        let apps = m.snapshot.applications.clone();
+                        m.pending_apps.push(AppInterval {
+                            date: date.clone(),
+                            apps,
+                        });
+                    }
+                }
+                app_baseline = Some((instant, date.clone(), offset, m.epoch));
+            } else {
+                app_baseline = None;
+            }
+            if m.pending_apps.len() > 60 {
+                m.pending_apps.clear();
+                m.snapshot.error = "Storage unavailable: application measurements were dropped".into();
+            }
+            if cleanup.elapsed() > Duration::from_secs(3600) {
+                if let Err(e) = store.cleanup(settings.retention_days) {
+                    m.snapshot.error = e;
+                }
+                cleanup = Instant::now();
+            }
             if m.snapshot.paused || selected.is_none() {
                 baseline = None;
                 m.snapshot.download = 0.0;
@@ -205,8 +242,17 @@ pub fn start(state: Arc<crate::AppState>, app: tauri::AppHandle) {
                     "No adapter available"
                 }
                 .into();
-                if let Err(e) = flush(&mut m, &mut store) {
-                    m.snapshot.error = e;
+                if m.snapshot.paused
+                    || !m.pending.is_empty()
+                    || last_flush.elapsed() >= Duration::from_secs(5)
+                {
+                    match flush(&mut m, &mut store) {
+                        Ok(()) => last_flush = Instant::now(),
+                        Err(e) => m.snapshot.error = e,
+                    }
+                }
+                if let Some(tray) = app.tray_by_id("main") {
+                    let _ = tray.set_tooltip(Some(format!("NetControl: {}", m.snapshot.status)));
                 }
                 continue;
             }
@@ -241,11 +287,6 @@ pub fn start(state: Arc<crate::AppState>, app: tauri::AppHandle) {
                         while m.snapshot.points.len() > 60 {
                             m.snapshot.points.pop_front();
                         }
-                        let apps = if active {
-                            m.snapshot.applications.clone()
-                        } else {
-                            vec![]
-                        };
                         m.pending.push(Interval {
                             start,
                             end: now.timestamp_millis(),
@@ -255,7 +296,6 @@ pub fn start(state: Arc<crate::AppState>, app: tauri::AppHandle) {
                             downloaded,
                             uploaded,
                             coverage: ms,
-                            apps,
                         });
                     } else {
                         m.snapshot.download = 0.0;
@@ -278,9 +318,13 @@ pub fn start(state: Arc<crate::AppState>, app: tauri::AppHandle) {
                 offset,
                 m.epoch,
             ));
-            if m.pending.len() >= 5 {
-                if let Err(e) = flush(&mut m, &mut store) {
-                    m.snapshot.error = e;
+            if m.pending.len() >= 5
+                || m.pending_apps.len() >= 5
+                || last_flush.elapsed() >= Duration::from_secs(5)
+            {
+                match flush(&mut m, &mut store) {
+                    Ok(()) => last_flush = Instant::now(),
+                    Err(e) => m.snapshot.error = e,
                 }
             }
             // Bound memory if the database becomes unwritable; surface the accounting gap.
@@ -288,12 +332,6 @@ pub fn start(state: Arc<crate::AppState>, app: tauri::AppHandle) {
                 m.pending.clear();
                 m.snapshot.error =
                     "Storage unavailable: recent measurements could not be saved".into();
-            }
-            if cleanup.elapsed() > Duration::from_secs(3600) {
-                if let Err(e) = store.cleanup(settings.retention_days) {
-                    m.snapshot.error = e;
-                }
-                cleanup = Instant::now();
             }
             if let Some(tray) = app.tray_by_id("main") {
                 let _ = tray.set_tooltip(Some(format!(
