@@ -1,3 +1,4 @@
 * text=auto eol=lf
 *.png binary
 *.ico binary
+THIRD_PARTY_NOTICES.txt linguist-generated=true

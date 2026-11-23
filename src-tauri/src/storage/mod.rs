@@ -153,7 +153,7 @@ impl Store {
     }
 
     pub fn applications(&self, from: &str, to: &str) -> Result<Vec<AppUsage>, String> {
-        let mut query=self.0.prepare("SELECT path,SUM(downloaded_bytes),SUM(uploaded_bytes) FROM app_daily WHERE local_date BETWEEN ?1 AND ?2 GROUP BY path ORDER BY SUM(downloaded_bytes)+SUM(uploaded_bytes) DESC LIMIT 500").map_err(|e|e.to_string())?;
+        let mut query=self.0.prepare("SELECT path,SUM(downloaded_bytes),SUM(uploaded_bytes) FROM app_daily WHERE local_date BETWEEN ?1 AND ?2 GROUP BY path ORDER BY SUM(downloaded_bytes)+SUM(uploaded_bytes) DESC").map_err(|e|e.to_string())?;
         let rows = query
             .query_map(params![from, to], |r| {
                 Ok(AppUsage {

@@ -262,7 +262,12 @@ pub fn enable(state: Arc<crate::AppState>) -> Result<(), String> {
                 }
                 let mut map = incoming.lock().map_err(|e| e.to_string())?;
                 for app in frame.apps {
-                    let entry = map.entry(app.path).or_default();
+                    let path = if map.len() >= 1024 && !map.contains_key(&app.path) {
+                        String::new()
+                    } else {
+                        app.path
+                    };
+                    let entry = map.entry(path).or_default();
                     entry.0 = entry.0.saturating_add(app.downloaded);
                     entry.1 = entry.1.saturating_add(app.uploaded);
                 }
