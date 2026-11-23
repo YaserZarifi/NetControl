@@ -1,0 +1,36 @@
+name: Tagged release
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require committed dependency locks and matching version
+        shell: bash
+        run: |
+          test -f package-lock.json
+          test -f src-tauri/Cargo.lock
+          node -e 'const p=require("./package.json"); const t=require("./src-tauri/tauri.conf.json"); if(process.env.GITHUB_REF_NAME!==`v${p.version}` || p.version!==t.version) process.exit(1)'
+  build:
+    needs: validate
+    uses: ./.github/workflows/windows-build.yml
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: NetControl-windows-x64
+          path: installer
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: gh release create "$RELEASE_TAG" installer/*.exe --draft --verify-tag --title "NetControl $RELEASE_TAG" --generate-notes
