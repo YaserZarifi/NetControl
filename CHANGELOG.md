@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.1
+
+- Fix Windows error 10035 when connecting the application-monitoring helper.
+- Signal readiness after tracing starts and use blocking I/O for accepted sessions.
+- Add delayed/fragmented socket and real helper-session regression tests.
+
 ## 0.1.0
 
 First Windows x64 release.

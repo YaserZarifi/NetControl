@@ -1,6 +1,6 @@
 [package]
 name = "netcontrol"
-version = "0.1.0"
+version = "0.1.1"
 description = "Local Windows network usage monitor"
 edition = "2021"
 license = "MIT"

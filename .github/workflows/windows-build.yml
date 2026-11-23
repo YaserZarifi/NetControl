@@ -57,6 +57,12 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           if (!(Test-Path src-tauri/Cargo.lock)) { cargo generate-lockfile --manifest-path src-tauri/Cargo.toml; Write-Warning 'Bootstrap build: commit the generated Cargo.lock before release.' }
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Verify workspace version lock
+        shell: pwsh
+        run: |
+          cargo update --workspace --manifest-path src-tauri/Cargo.toml
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          git diff --exit-code -- src-tauri/Cargo.lock
       - name: Collect dependency license notices
         run: npm run notices
       - name: Generate application icons
