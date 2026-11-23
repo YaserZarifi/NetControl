@@ -51,7 +51,12 @@ const navigation = [
   { name: "Settings", icon: SettingsIcon },
 ] as const;
 type Page = (typeof navigation)[number]["name"];
-const emptyHistory: History = { days: [], applications: [], blockedPaths: [] };
+const emptyHistory: History = {
+  days: [],
+  applications: [],
+  blockedPaths: [],
+  firewallError: "",
+};
 function applicationName(path: string) {
   return path ? path.split(/[\\/]/).pop() || path : "System / Unattributed";
 }
@@ -258,7 +263,9 @@ export default function App() {
         <tbody>
           {apps.length ? (
             apps.map((a) => {
-              const blocked = today.blockedPaths.includes(a.path);
+              const blocked = today.blockedPaths.some(
+                (path) => path.toLowerCase() === a.path.toLowerCase(),
+              );
               const current = live?.applications.find((x) => x.path === a.path);
               return (
                 <tr key={a.path}>
@@ -280,11 +287,17 @@ export default function App() {
                           ? `${fmt(current.downloaded)} down / ${fmt(current.uploaded)} up`
                           : "No recent events"}
                       </td>
-                      <td>{blocked ? "Blocked outbound" : "No restriction"}</td>
+                      <td>
+                        {today.firewallError
+                          ? "Unavailable"
+                          : blocked
+                            ? "Outbound block rule"
+                            : "No NetControl rule"}
+                      </td>
                       <td>
                         {a.path && (
                           <button
-                            disabled={busy || !desktop}
+                            disabled={busy || !desktop || !!today.firewallError}
                             onClick={() =>
                               setConfirm({ path: a.path, blocked: !blocked })
                             }
@@ -536,6 +549,12 @@ export default function App() {
         )}
         {page === "Applications" && (
           <>
+            {today.firewallError && (
+              <div role="alert" className="notice error">
+                Windows Firewall state is unavailable: {today.firewallError}.
+                Usage monitoring remains available.
+              </div>
+            )}
             <section className="panel">
               <div className="panel-heading">
                 <div>
@@ -771,6 +790,7 @@ export default function App() {
                         <option key={a.name} value={a.name}>
                           {a.name}
                           {a.virtualAdapter ? " (virtual/VPN)" : ""}
+                          {!a.online ? " (disconnected)" : ""}
                         </option>
                       ))}
                     </select>
@@ -889,6 +909,12 @@ export default function App() {
               <p>Copyright © 2026 Yaser Zarifi</p>
               <a
                 href="https://github.com/YaserZarifi/NetControl"
+                onClick={(event) => {
+                  if (desktop) {
+                    event.preventDefault();
+                    void action(() => command("open_project_page"), "");
+                  }
+                }}
                 target="_blank"
                 rel="noreferrer"
               >

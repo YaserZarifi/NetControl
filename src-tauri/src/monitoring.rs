@@ -12,6 +12,7 @@ use std::{
 pub struct Adapter {
     pub name: String,
     pub virtual_adapter: bool,
+    pub online: bool,
 }
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -142,10 +143,10 @@ pub fn start(state: Arc<crate::AppState>, app: tauri::AppHandle) {
             };
             m.snapshot.adapters = networks
                 .iter()
-                .filter(|(_, d)| d.online)
                 .map(|(n, d)| Adapter {
                     name: n.clone(),
                     virtual_adapter: !d.physical || is_virtual(&d.description),
+                    online: d.online,
                 })
                 .collect();
             m.snapshot.adapters.sort_by(|a, b| a.name.cmp(&b.name));
@@ -219,6 +220,7 @@ pub fn start(state: Arc<crate::AppState>, app: tauri::AppHandle) {
                 if epoch == m.epoch
                     && prior == name
                     && (500..=5000).contains(&ms)
+                    && now.timestamp_millis() >= start
                     && prior_date == date
                     && prior_offset == offset
                 {

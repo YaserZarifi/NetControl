@@ -24,7 +24,7 @@ export type Point = { time: number; download: number; upload: number };
 export type Snapshot = {
   paused: boolean;
   adapter: string;
-  adapters: { name: string; virtualAdapter: boolean }[];
+  adapters: { name: string; virtualAdapter: boolean; online: boolean }[];
   points: Point[];
   download: number;
   upload: number;
@@ -37,6 +37,7 @@ export type History = {
   days: DailyUsage[];
   applications: AppUsage[];
   blockedPaths: string[];
+  firewallError: string;
 };
 export const desktop = isTauri();
 const defaults: Settings = {
@@ -91,7 +92,7 @@ export async function snapshot(): Promise<Snapshot> {
 export async function history(from: string, to: string): Promise<History> {
   return desktop
     ? invoke("get_history", { from, to })
-    : { days: [], applications: [], blockedPaths: [] };
+    : { days: [], applications: [], blockedPaths: [], firewallError: "" };
 }
 export async function command(
   name: string,

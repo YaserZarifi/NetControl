@@ -31,6 +31,7 @@ struct History {
     days: Vec<storage::DailyUsage>,
     applications: Vec<storage::AppUsage>,
     blocked_paths: Vec<String>,
+    firewall_error: String,
 }
 fn startup(enabled: bool) -> Result<(), String> {
     use winreg::{enums::HKEY_CURRENT_USER, RegKey};
@@ -96,6 +97,13 @@ fn get_snapshot(state: tauri::State<Arc<AppState>>) -> Result<monitoring::Snapsh
         .clone())
 }
 #[tauri::command]
+fn open_project_page() -> Result<(), String> {
+    use windows::{core::{w, PCWSTR}, Win32::UI::{Shell::ShellExecuteW, WindowsAndMessaging::SW_SHOWNORMAL}};
+    let result = unsafe { ShellExecuteW(None, w!("open"), w!("https://github.com/YaserZarifi/NetControl"), PCWSTR::null(), PCWSTR::null(), SW_SHOWNORMAL) };
+    if result.0 as isize <= 32 { return Err("Windows could not open the project page".into()); }
+    Ok(())
+}
+#[tauri::command]
 fn get_history(
     from: String,
     to: String,
@@ -114,7 +122,10 @@ fn get_history(
     let paths = store.rule_paths()?;
     drop(store);
     drop(monitor);
-    let blocked_paths = firewall::blocked_paths(&paths)?;
+    let (blocked_paths, firewall_error) = match firewall::blocked_paths(&paths) {
+        Ok(paths) => (paths, String::new()),
+        Err(error) => (vec![], error),
+    };
     for path in &blocked_paths {
         if !applications
             .iter()
@@ -130,6 +141,7 @@ fn get_history(
         days,
         applications,
         blocked_paths,
+        firewall_error,
     })
 }
 #[tauri::command]
@@ -295,7 +307,7 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window,event|{if let tauri::WindowEvent::CloseRequested{api,..}=event{let state=window.state::<Arc<AppState>>();let tray=state.store.lock().ok().and_then(|s|s.settings().ok()).is_some_and(|s|s.minimize_to_tray);if tray{api.prevent_close();let _=window.hide();}}})
-        .invoke_handler(tauri::generate_handler![get_foundation,save_settings,clear_error,get_app_history,get_snapshot,get_history,set_paused,reset_history,enable_attribution,disable_attribution,set_firewall])
+        .invoke_handler(tauri::generate_handler![get_foundation,save_settings,clear_error,open_project_page,get_app_history,get_snapshot,get_history,set_paused,reset_history,enable_attribution,disable_attribution,set_firewall])
         .build(tauri::generate_context!()).expect("NetControl could not start");
     app.run(|app, event| {
         if matches!(event, tauri::RunEvent::Exit) {

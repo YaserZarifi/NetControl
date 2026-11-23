@@ -206,7 +206,7 @@ impl Store {
 
     pub fn cleanup(&self, retention: u16) -> Result<(), String> {
         let cutoff = (chrono::Local::now().date_naive()
-            - chrono::Duration::days(i64::from(retention)))
+            - chrono::Duration::days(i64::from(retention.saturating_sub(1))))
         .to_string();
         self.0
             .execute(

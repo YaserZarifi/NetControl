@@ -6,7 +6,7 @@
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "npm run build",
+    "beforeBuildCommand": "npm run build && npm run notices",
     "frontendDist": "../dist"
   },
   "app": {
@@ -47,6 +47,9 @@
     },
     "shortDescription": "Local network usage monitor and application firewall controls",
     "copyright": "Copyright 2026 Yaser Zarifi",
-    "licenseFile": "../LICENSE"
+    "licenseFile": "../LICENSE",
+    "resources": {
+      "../THIRD_PARTY_NOTICES.txt": "THIRD_PARTY_NOTICES.txt"
+    }
   }
 }
