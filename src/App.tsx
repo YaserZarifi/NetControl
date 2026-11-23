@@ -1,46 +1,1010 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Activity, ArrowDown, ArrowUp, BarChart3, Check, Download, Gauge, Monitor, Pause, Play, Settings as SettingsIcon, ShieldCheck, Wifi, X } from 'lucide-react';
-import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { appHistory, command, desktop, exportCsv, formatBytes, history, loadFoundation, localDate, saveSettings, snapshot, type AppUsage, type DailyUsage, type Foundation, type History, type Settings, type Snapshot } from './services/backend';
-const navigation=[{name:'Dashboard',icon:Gauge},{name:'Applications',icon:Monitor},{name:'Usage',icon:BarChart3},{name:'Settings',icon:SettingsIcon}] as const;
-type Page=typeof navigation[number]['name'];
-const emptyHistory:History={days:[],applications:[],blockedPaths:[]};
-function applicationName(path:string){return path?path.split(/[\\/]/).pop()||path:'System / Unattributed';}
-function Modal({title,children,onClose}:{title:string;children:ReactNode;onClose:()=>void}){
-  const ref=useRef<HTMLDialogElement>(null);
-  useEffect(()=>{ref.current?.showModal();},[]);
-  return <dialog ref={ref} onCancel={onClose} aria-label={title}><div className="panel-heading"><h2>{title}</h2><button className="icon-button" aria-label="Close dialog" onClick={onClose}><X size={18}/></button></div>{children}</dialog>;
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  Activity,
+  ArrowDown,
+  ArrowUp,
+  BarChart3,
+  Check,
+  Download,
+  Gauge,
+  Monitor,
+  Pause,
+  Play,
+  Settings as SettingsIcon,
+  ShieldCheck,
+  Wifi,
+  X,
+} from "lucide-react";
+import {
+  Area,
+  AreaChart,
+  Bar,
+  BarChart,
+  CartesianGrid,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
+import {
+  appHistory,
+  command,
+  desktop,
+  exportCsv,
+  formatBytes,
+  history,
+  loadFoundation,
+  localDate,
+  saveSettings,
+  snapshot,
+  type AppUsage,
+  type DailyUsage,
+  type Foundation,
+  type History,
+  type Settings,
+  type Snapshot,
+} from "./services/backend";
+const navigation = [
+  { name: "Dashboard", icon: Gauge },
+  { name: "Applications", icon: Monitor },
+  { name: "Usage", icon: BarChart3 },
+  { name: "Settings", icon: SettingsIcon },
+] as const;
+type Page = (typeof navigation)[number]["name"];
+const emptyHistory: History = { days: [], applications: [], blockedPaths: [] };
+function applicationName(path: string) {
+  return path ? path.split(/[\\/]/).pop() || path : "System / Unattributed";
 }
-export default function App(){
-  const [page,setPage]=useState<Page>('Dashboard');const [foundation,setFoundation]=useState<Foundation>();const [live,setLive]=useState<Snapshot>();
-  const [today,setToday]=useState<History>(emptyHistory);const [month,setMonth]=useState<History>(emptyHistory);const [usage,setUsage]=useState<History>(emptyHistory);
-  const [from,setFrom]=useState(localDate());const [to,setTo]=useState(localDate());const [refresh,setRefresh]=useState(0);
-  const [error,setError]=useState('');const [message,setMessage]=useState('');const [busy,setBusy]=useState(false);const [search,setSearch]=useState('');const [sort,setSort]=useState('usage');
-  const [detailDays,setDetailDays]=useState<DailyUsage[]>([]);
-  const [details,setDetails]=useState<AppUsage>();const [blockPath,setBlockPath]=useState('');const [confirm,setConfirm]=useState<{path:string;blocked:boolean}>();const [reset,setReset]=useState(false);
-  useEffect(()=>{let active=true;loadFoundation().then(s=>{if(active)setFoundation(s);}).catch(e=>{if(active)setError(String(e));});return()=>{active=false;};},[]);
-  useEffect(()=>{document.documentElement.dataset.theme=foundation?.settings.theme??'system';},[foundation?.settings.theme]);
-  useEffect(()=>{let active=true;let timer:ReturnType<typeof setTimeout>;async function poll(){try{const s=await snapshot();if(active)setLive(s);}catch(e){if(active)setError(String(e));}if(active)timer=setTimeout(()=>void poll(),1000);}void poll();return()=>{active=false;clearTimeout(timer);};},[]);
-  useEffect(()=>{let active=true;let timer:ReturnType<typeof setTimeout>;async function poll(){try{const date=localDate();const [a,b,c]=await Promise.all([history(date,date),history(date.slice(0,8)+'01',date),history(from,to)]);if(active){setToday(a);setMonth(b);setUsage(c);}}catch(e){if(active)setError(String(e));}if(active)timer=setTimeout(()=>void poll(),5000);}void poll();return()=>{active=false;clearTimeout(timer);};},[from,to,refresh]);
-  useEffect(()=>{let active=true;setDetailDays([]);if(details){const start=page==='Usage'?from:localDate();const end=page==='Usage'?to:localDate();void appHistory(details.path,start,end).then(rows=>{if(active)setDetailDays(rows);}).catch(e=>{if(active)setError(String(e));});}return()=>{active=false;};},[details,from,to,page]);
-  const binary=foundation?.settings.units==='binary';const fmt=(n:number)=>formatBytes(n,binary);
-  const total=(h:History)=>h.days.reduce((n,d)=>n+d.downloaded+d.uploaded,0);const coverage=today.days.reduce((n,d)=>n+d.coverageMs,0);
-  async function action(work:()=>Promise<void>,success:string){setBusy(true);setError('');setMessage('');try{await work();setMessage(success);setRefresh(n=>n+1);}catch(e){setError(String(e));}finally{setBusy(false);}}
-  async function update(patch:Partial<Settings>){if(!foundation)return;const settings={...foundation.settings,...patch};await action(async()=>{await saveSettings(settings);setFoundation({...foundation,settings});},'Preferences saved');}
-  function range(value:string){const end=new Date();const start=new Date();if(value==='yesterday'){start.setDate(start.getDate()-1);end.setDate(end.getDate()-1);}else if(value==='week')start.setDate(start.getDate()-6);else if(value==='thirty')start.setDate(start.getDate()-29);else if(value==='month')start.setDate(1);setFrom(localDate(start));setTo(localDate(end));}
-  const appRows=today.applications.filter(a=>a.path.toLowerCase().includes(search.toLowerCase())).sort((a,b)=>sort==='name'?applicationName(a.path).localeCompare(applicationName(b.path)):sort==='download'?(live?.applications.find(x=>x.path===b.path)?.downloaded??0)-(live?.applications.find(x=>x.path===a.path)?.downloaded??0):sort==='upload'?(live?.applications.find(x=>x.path===b.path)?.uploaded??0)-(live?.applications.find(x=>x.path===a.path)?.uploaded??0):(b.downloaded+b.uploaded)-(a.downloaded+a.uploaded));
-  const appTable=(apps:AppUsage[],controls=false)=><div className="table-wrap"><table><thead><tr><th>Application</th><th>Downloaded</th><th>Uploaded</th>{controls&&<><th>Current interval</th><th>NetControl rule</th><th>Action</th></>}</tr></thead><tbody>{apps.length?apps.map(a=>{const blocked=today.blockedPaths.includes(a.path);const current=live?.applications.find(x=>x.path===a.path);return <tr key={a.path}><td><button className="text-button app-name" onClick={()=>setDetails(a)} title={a.path}>{applicationName(a.path)}</button></td><td>{fmt(a.downloaded)}</td><td>{fmt(a.uploaded)}</td>{controls&&<><td>{current?`${fmt(current.downloaded)} down / ${fmt(current.uploaded)} up`:'No recent events'}</td><td>{blocked?'Blocked outbound':'No restriction'}</td><td>{a.path&&<button disabled={busy||!desktop} onClick={()=>setConfirm({path:a.path,blocked:!blocked})}>{blocked?'Remove block':'Block'}</button>}</td></>}</tr>;}):<tr><td colSpan={controls?6:3} className="empty-cell">No application measurements in this period.</td></tr>}</tbody></table></div>;
-  const settings=foundation?.settings;
-  return <div className="shell"><aside><div className="brand"><Activity size={25}/>NetControl</div><div className="eyebrow nav-label">YOUR NETWORK</div><nav aria-label="Main navigation">{navigation.map(({name,icon:Icon})=><button key={name} className={page===name?'active':''} aria-current={page===name?'page':undefined} onClick={()=>setPage(name)}><Icon size={18}/>{name}</button>)}</nav><div className="sidebar-bottom"><ShieldCheck size={17}/><div>Local by design<small>Your data stays on this PC</small></div></div></aside><main><header><div><div className="eyebrow">NETWORK OVERVIEW</div><h1>{page}</h1></div><div className="header-controls"><span className="status"><span className="dot"/>{live?.status??'Starting'}</span>{desktop&&<button disabled={busy} onClick={()=>void action(()=>command('set_paused',{paused:!live?.paused}),live?.paused?'Monitoring resumed':'Monitoring paused')}>{live?.paused?<Play size={14}/>:<Pause size={14}/>} {live?.paused?'Resume':'Pause'}</button>}</div></header>
-  {(error||live?.error)&&<div role="alert" className="notice error">{error||live?.error}<button onClick={()=>{setError('');setRefresh(n=>n+1);}}>Retry</button></div>}{message&&<div role="status" className="notice"><Check size={16}/>{message}</div>}
-  {!desktop&&<div className="notice">Browser preview. Open the installed Windows app to collect traffic and use system controls.</div>}
-  {page==='Dashboard'&&<><div className="section-heading"><h2>Today at a glance</h2><span>Measured time: {(coverage/3600000).toFixed(2)} hours</span></div><div className="metrics">{[{title:'Download speed',value:live?.status==='Monitoring'?fmt(live.download)+'/s':'Unavailable',icon:ArrowDown},{title:'Upload speed',value:live?.status==='Monitoring'?fmt(live.upload)+'/s':'Unavailable',icon:ArrowUp},{title:'Total today',value:fmt(total(today)),icon:BarChart3},{title:'This month',value:fmt(total(month)),icon:Gauge}].map(({title,value,icon:Icon})=><section className="metric" key={title}><div><span>{title}</span><Icon size={16}/></div><strong className="measured-value">{value}</strong><small>{title.includes('speed')?'Selected adapter':'Recorded measurements'}</small></section>)}</div><p className="footnote">Today: {fmt(today.days.reduce((n,d)=>n+d.downloaded,0))} downloaded · {fmt(today.days.reduce((n,d)=>n+d.uploaded,0))} uploaded</p><section className="panel"><div className="panel-heading"><div><h2>Live network activity</h2><p>Last 60 samples · {binary?'KiB/s':'KB/s'}</p></div><span className="legend">↓ Download | ↑ Upload</span></div>{live?.points.length?<div className="chart"><ResponsiveContainer width="100%" height="100%"><AreaChart data={live.points.map(p=>({...p,download:p.download/(binary?1024:1000),upload:p.upload/(binary?1024:1000)}))}><CartesianGrid strokeDasharray="3 3" vertical={false}/><XAxis dataKey="time" tickFormatter={v=>new Date(Number(v)).toLocaleTimeString([],{minute:'2-digit',second:'2-digit'})} minTickGap={50}/><YAxis width={50}/><Tooltip labelFormatter={v=>new Date(Number(v)).toLocaleTimeString()}/><Area name="Download" type="linear" dataKey="download" stroke="#3b82c4" fill="#3b82c4" fillOpacity={0.12} isAnimationActive={false}/><Area name="Upload" type="linear" dataKey="upload" stroke="#bd7d38" fill="#bd7d38" fillOpacity={0.08} isAnimationActive={false}/></AreaChart></ResponsiveContainer></div>:<div className="empty chart-empty"><Activity size={28}/><h3>Waiting for measurements</h3><p>Recording begins after two valid adapter readings.</p></div>}</section><section className="panel"><h2><Wifi size={16}/> Selected adapter</h2><p className="adapter-name">{live?.adapter||'No adapter selected'}</p><p className="footnote">Measures all traffic on this adapter, including local traffic. ISP billing may differ. Automatic mode selects one adapter to avoid summing physical and virtual traffic.</p></section><section className="panel"><div className="panel-heading"><h2>Top applications today</h2><button className="text-button" onClick={()=>setPage('Applications')}>View applications</button></div>{appTable(today.applications.slice(0,5))}</section></>}
-  {page==='Applications'&&<><section className="panel"><div className="panel-heading"><div><h2>Application monitoring</h2><p>{live?.attribution??'Disabled'}</p></div><button disabled={busy||!desktop} onClick={()=>void action(()=>command(live?.attribution.startsWith('Recording')?'disable_attribution':'enable_attribution'),live?.attribution.startsWith('Recording')?'Application monitoring stopped':'Application monitoring requested')}>{live?.attribution.startsWith('Recording')?'Stop monitoring':'Enable monitoring'}</button></div><p className="footnote">Windows requests administrator permission for TCP/UDP event tracing. Application bytes cover all adapters and have different coverage from the selected adapter total. Unresolved process identities appear as System / Unattributed. No packet contents are collected.</p></section><section className="panel"><div className="toolbar"><input aria-label="Search applications" placeholder="Search applications or paths" value={search} onChange={e=>setSearch(e.target.value)}/><select aria-label="Sort applications" value={sort} onChange={e=>setSort(e.target.value)}><option value="usage">Total usage today</option><option value="download">Recent download</option><option value="upload">Recent upload</option><option value="name">Name</option></select></div>{appTable(appRows,true)}</section><section className="panel"><h2>Block a program by executable path</h2><p className="footnote">Outbound blocking applies to all network destinations, including your local network. Windows system programs and NetControl are protected.</p><form className="toolbar" onSubmit={e=>{e.preventDefault();setConfirm({path:blockPath,blocked:true});}}><input aria-label="Executable path" placeholder="C:\Program Files\Example\Example.exe" value={blockPath} onChange={e=>setBlockPath(e.target.value)} required/><button disabled={busy||!desktop}>Block program</button></form></section></>}
-  {page==='Usage'&&<><section className="panel"><div className="toolbar"><select aria-label="Usage period" defaultValue="today" onChange={e=>range(e.target.value)}><option value="today">Today</option><option value="yesterday">Yesterday</option><option value="week">Last 7 days</option><option value="thirty">Last 30 days</option><option value="month">Current month</option></select><label>From <input type="date" value={from} max={to} onChange={e=>setFrom(e.target.value)}/></label><label>To <input type="date" value={to} min={from} max={localDate()} onChange={e=>setTo(e.target.value)}/></label><button onClick={()=>exportCsv(usage.days,usage.applications,from,to)}><Download size={14}/> Export CSV</button></div><h3>{fmt(total(usage))} recorded</h3><p className="footnote">Only time monitored by NetControl is included. Missing days have no recorded coverage.</p>{usage.days.length?<div className="chart"><ResponsiveContainer width="100%" height="100%"><BarChart data={usage.days}><CartesianGrid vertical={false} strokeDasharray="3 3"/><XAxis dataKey="date" minTickGap={30}/><YAxis tickFormatter={fmt} width={75}/><Tooltip formatter={v=>fmt(Number(v))}/><Bar name="Downloaded" dataKey="downloaded" stackId="usage" fill="#3b82c4" isAnimationActive={false}/><Bar name="Uploaded" dataKey="uploaded" stackId="usage" fill="#bd7d38" isAnimationActive={false}/></BarChart></ResponsiveContainer></div>:<div className="empty"><BarChart3 size={30}/><h3>No usage recorded for this period</h3></div>}<div className="table-wrap"><table><thead><tr><th>Date</th><th>Downloaded</th><th>Uploaded</th><th>Measured time</th></tr></thead><tbody>{usage.days.map(d=><tr key={d.date}><td>{d.date}</td><td>{fmt(d.downloaded)}</td><td>{fmt(d.uploaded)}</td><td>{(d.coverageMs/3600000).toFixed(2)} hours</td></tr>)}</tbody></table></div></section><section className="panel"><h2>Applications in this period</h2><p className="footnote">TCP/UDP measurements across all adapters, collected while application monitoring was enabled.</p>{appTable(usage.applications)}</section></>}
-  {page==='Settings'&&<><section className="panel"><h2>Preferences</h2>{settings?<><label className="setting-row"><span>Appearance<small>Choose a theme or follow Windows.</small></span><select disabled={busy} value={settings.theme} onChange={e=>void update({theme:e.target.value as Settings['theme']})}><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select></label><label className="setting-row"><span>Network adapter<small>Automatic mode prefers a nonvirtual adapter. Select your VPN explicitly to measure it.</small></span><select disabled={busy||!desktop} value={settings.adapter} onChange={e=>void update({adapter:e.target.value})}><option value="">Automatic</option>{live?.adapters.map(a=><option key={a.name} value={a.name}>{a.name}{a.virtualAdapter?' (virtual/VPN)':''}</option>)}</select></label><label className="setting-row"><span>Data units<small>Decimal uses 1,000 bytes per KB. Binary uses 1,024 per KiB.</small></span><select disabled={busy} value={settings.units} onChange={e=>void update({units:e.target.value as Settings['units']})}><option value="decimal">Decimal</option><option value="binary">Binary</option></select></label><label className="setting-row"><span>History retention<small>Older records are removed automatically.</small></span><select disabled={busy} value={settings.retentionDays} onChange={e=>void update({retentionDays:Number(e.target.value)})}>{[30,90,365].map(n=><option key={n} value={n}>{n} days</option>)}</select></label>{[{key:'launchAtStartup' as const,label:'Launch at Windows startup',help:'Starts NetControl after you sign in.'},{key:'minimizeToTray' as const,label:'Close to system tray',help:'Keep monitoring when the window is closed. Use Exit in the tray menu to quit.'},{key:'startMinimized' as const,label:'Start minimized',help:'Start with the window hidden in the system tray.'}].map(s=><label className="setting-row" key={s.key}><span>{s.label}<small>{s.help}</small></span><input type="checkbox" disabled={busy||!desktop} checked={settings[s.key]} onChange={e=>void update({[s.key]:e.target.checked})}/></label>)}</>:<p>Loading preferences</p>}</section><section className="panel"><h2>Local data</h2><p className="footnote">History is stored in SQLite on this PC. Resetting usage preserves preferences and firewall rules.</p><div className="toolbar"><button onClick={()=>{setPage('Usage');range('thirty');}}>Export usage</button><button className="danger" disabled={busy||!desktop} onClick={()=>setReset(true)}>Reset recorded history</button></div></section><section className="panel about"><h2>About NetControl</h2><p>Version {foundation?.version??'0.1.0'} · Windows 10 / 11 · MIT License</p><p>No accounts, advertisements, telemetry, or automatic update checks.</p><p>Copyright © 2026 Yaser Zarifi</p><a href="https://github.com/YaserZarifi/NetControl" target="_blank" rel="noreferrer">Source code and releases</a></section></>}
-  <footer>NetControl<span>Measured locally · Stored on this PC</span></footer></main>
-  {details&&<Modal title={applicationName(details.path)} onClose={()=>setDetails(undefined)}><p className="path">{details.path||'Windows could not resolve this traffic to a process.'}</p><p>Downloaded: {fmt(details.downloaded)}<br/>Uploaded: {fmt(details.uploaded)}</p>{detailDays.length>0&&<div className="table-wrap"><table><thead><tr><th>Date</th><th>Downloaded</th><th>Uploaded</th></tr></thead><tbody>{detailDays.map(d=><tr key={d.date}><td>{d.date}</td><td>{fmt(d.downloaded)}</td><td>{fmt(d.uploaded)}</td></tr>)}</tbody></table></div>}<p className="footnote">These are recorded TCP/UDP totals for the period shown in the table. Interface totals and application totals have different coverage.</p></Modal>}
-  {confirm&&<Modal title={confirm.blocked?'Block outbound network access?':'Remove NetControl restriction?'} onClose={()=>setConfirm(undefined)}><p className="path">{confirm.path}</p><p>{confirm.blocked?'This blocks outbound traffic to internet and local network destinations. Windows will request administrator permission.':'Only the rule created by NetControl will be removed. Other firewall or security rules may still restrict this program.'}</p><div className="toolbar"><button disabled={busy} onClick={()=>{const change=confirm;setConfirm(undefined);void action(()=>command('set_firewall',change),change.blocked?'Outbound restriction applied':'NetControl restriction removed');}}>Confirm</button><button onClick={()=>setConfirm(undefined)}>Cancel</button></div></Modal>}
-  {reset&&<Modal title="Reset all recorded usage?" onClose={()=>setReset(false)}><p>This permanently removes usage history from this PC. Preferences and firewall restrictions are preserved.</p><div className="toolbar"><button className="danger" disabled={busy} onClick={()=>{setReset(false);void action(()=>command('reset_history'),'Recorded usage reset');}}>Reset history</button><button onClick={()=>setReset(false)}>Cancel</button></div></Modal>}
-  </div>;
+function Modal({
+  title,
+  children,
+  onClose,
+}: {
+  title: string;
+  children: ReactNode;
+  onClose: () => void;
+}) {
+  const ref = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    ref.current?.showModal();
+  }, []);
+  return (
+    <dialog ref={ref} onCancel={onClose} aria-label={title}>
+      <div className="panel-heading">
+        <h2>{title}</h2>
+        <button
+          className="icon-button"
+          aria-label="Close dialog"
+          onClick={onClose}
+        >
+          <X size={18} />
+        </button>
+      </div>
+      {children}
+    </dialog>
+  );
+}
+export default function App() {
+  const [page, setPage] = useState<Page>("Dashboard");
+  const [foundation, setFoundation] = useState<Foundation>();
+  const [live, setLive] = useState<Snapshot>();
+  const [today, setToday] = useState<History>(emptyHistory);
+  const [month, setMonth] = useState<History>(emptyHistory);
+  const [usage, setUsage] = useState<History>(emptyHistory);
+  const [from, setFrom] = useState(localDate());
+  const [to, setTo] = useState(localDate());
+  const [refresh, setRefresh] = useState(0);
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [search, setSearch] = useState("");
+  const [sort, setSort] = useState("usage");
+  const [detailDays, setDetailDays] = useState<DailyUsage[]>([]);
+  const [details, setDetails] = useState<AppUsage>();
+  const [blockPath, setBlockPath] = useState("");
+  const [confirm, setConfirm] = useState<{ path: string; blocked: boolean }>();
+  const [reset, setReset] = useState(false);
+  useEffect(() => {
+    let active = true;
+    loadFoundation()
+      .then((s) => {
+        if (active) setFoundation(s);
+      })
+      .catch((e) => {
+        if (active) setError(String(e));
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+  useEffect(() => {
+    document.documentElement.dataset.theme =
+      foundation?.settings.theme ?? "system";
+  }, [foundation?.settings.theme]);
+  useEffect(() => {
+    let active = true;
+    let timer: ReturnType<typeof setTimeout>;
+    async function poll() {
+      try {
+        const s = await snapshot();
+        if (active) setLive(s);
+      } catch (e) {
+        if (active) setError(String(e));
+      }
+      if (active) timer = setTimeout(() => void poll(), 1000);
+    }
+    void poll();
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, []);
+  useEffect(() => {
+    let active = true;
+    let timer: ReturnType<typeof setTimeout>;
+    async function poll() {
+      try {
+        const date = localDate();
+        const [a, b, c] = await Promise.all([
+          history(date, date),
+          history(date.slice(0, 8) + "01", date),
+          history(from, to),
+        ]);
+        if (active) {
+          setToday(a);
+          setMonth(b);
+          setUsage(c);
+        }
+      } catch (e) {
+        if (active) setError(String(e));
+      }
+      if (active) timer = setTimeout(() => void poll(), 5000);
+    }
+    void poll();
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [from, to, refresh]);
+  useEffect(() => {
+    let active = true;
+    setDetailDays([]);
+    if (details) {
+      const start = page === "Usage" ? from : localDate();
+      const end = page === "Usage" ? to : localDate();
+      void appHistory(details.path, start, end)
+        .then((rows) => {
+          if (active) setDetailDays(rows);
+        })
+        .catch((e) => {
+          if (active) setError(String(e));
+        });
+    }
+    return () => {
+      active = false;
+    };
+  }, [details, from, to, page]);
+  const binary = foundation?.settings.units === "binary";
+  const fmt = (n: number) => formatBytes(n, binary);
+  const total = (h: History) =>
+    h.days.reduce((n, d) => n + d.downloaded + d.uploaded, 0);
+  const coverage = today.days.reduce((n, d) => n + d.coverageMs, 0);
+  async function action(work: () => Promise<void>, success: string) {
+    setBusy(true);
+    setError("");
+    setMessage("");
+    try {
+      await work();
+      setMessage(success);
+      setRefresh((n) => n + 1);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function update(patch: Partial<Settings>) {
+    if (!foundation) return;
+    const settings = { ...foundation.settings, ...patch };
+    await action(async () => {
+      await saveSettings(settings);
+      setFoundation({ ...foundation, settings });
+    }, "Preferences saved");
+  }
+  function range(value: string) {
+    const end = new Date();
+    const start = new Date();
+    if (value === "yesterday") {
+      start.setDate(start.getDate() - 1);
+      end.setDate(end.getDate() - 1);
+    } else if (value === "week") start.setDate(start.getDate() - 6);
+    else if (value === "thirty") start.setDate(start.getDate() - 29);
+    else if (value === "month") start.setDate(1);
+    setFrom(localDate(start));
+    setTo(localDate(end));
+  }
+  const appRows = today.applications
+    .filter((a) => a.path.toLowerCase().includes(search.toLowerCase()))
+    .sort((a, b) =>
+      sort === "name"
+        ? applicationName(a.path).localeCompare(applicationName(b.path))
+        : sort === "download"
+          ? (live?.applications.find((x) => x.path === b.path)?.downloaded ??
+              0) -
+            (live?.applications.find((x) => x.path === a.path)?.downloaded ?? 0)
+          : sort === "upload"
+            ? (live?.applications.find((x) => x.path === b.path)?.uploaded ??
+                0) -
+              (live?.applications.find((x) => x.path === a.path)?.uploaded ?? 0)
+            : b.downloaded + b.uploaded - (a.downloaded + a.uploaded),
+    );
+  const appTable = (apps: AppUsage[], controls = false) => (
+    <div className="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Application</th>
+            <th>Downloaded</th>
+            <th>Uploaded</th>
+            {controls && (
+              <>
+                <th>Current interval</th>
+                <th>NetControl rule</th>
+                <th>Action</th>
+              </>
+            )}
+          </tr>
+        </thead>
+        <tbody>
+          {apps.length ? (
+            apps.map((a) => {
+              const blocked = today.blockedPaths.includes(a.path);
+              const current = live?.applications.find((x) => x.path === a.path);
+              return (
+                <tr key={a.path}>
+                  <td>
+                    <button
+                      className="text-button app-name"
+                      onClick={() => setDetails(a)}
+                      title={a.path}
+                    >
+                      {applicationName(a.path)}
+                    </button>
+                  </td>
+                  <td>{fmt(a.downloaded)}</td>
+                  <td>{fmt(a.uploaded)}</td>
+                  {controls && (
+                    <>
+                      <td>
+                        {current
+                          ? `${fmt(current.downloaded)} down / ${fmt(current.uploaded)} up`
+                          : "No recent events"}
+                      </td>
+                      <td>{blocked ? "Blocked outbound" : "No restriction"}</td>
+                      <td>
+                        {a.path && (
+                          <button
+                            disabled={busy || !desktop}
+                            onClick={() =>
+                              setConfirm({ path: a.path, blocked: !blocked })
+                            }
+                          >
+                            {blocked ? "Remove block" : "Block"}
+                          </button>
+                        )}
+                      </td>
+                    </>
+                  )}
+                </tr>
+              );
+            })
+          ) : (
+            <tr>
+              <td colSpan={controls ? 6 : 3} className="empty-cell">
+                No application measurements in this period.
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+  const settings = foundation?.settings;
+  return (
+    <div className="shell">
+      <aside>
+        <div className="brand">
+          <Activity size={25} />
+          NetControl
+        </div>
+        <div className="eyebrow nav-label">YOUR NETWORK</div>
+        <nav aria-label="Main navigation">
+          {navigation.map(({ name, icon: Icon }) => (
+            <button
+              key={name}
+              className={page === name ? "active" : ""}
+              aria-current={page === name ? "page" : undefined}
+              onClick={() => setPage(name)}
+            >
+              <Icon size={18} />
+              {name}
+            </button>
+          ))}
+        </nav>
+        <div className="sidebar-bottom">
+          <ShieldCheck size={17} />
+          <div>
+            Local by design<small>Your data stays on this PC</small>
+          </div>
+        </div>
+      </aside>
+      <main>
+        <header>
+          <div>
+            <div className="eyebrow">NETWORK OVERVIEW</div>
+            <h1>{page}</h1>
+          </div>
+          <div className="header-controls">
+            <span className="status">
+              <span className="dot" />
+              {live?.status ?? "Starting"}
+            </span>
+            {desktop && (
+              <button
+                disabled={busy}
+                onClick={() =>
+                  void action(
+                    () => command("set_paused", { paused: !live?.paused }),
+                    live?.paused ? "Monitoring resumed" : "Monitoring paused",
+                  )
+                }
+              >
+                {live?.paused ? <Play size={14} /> : <Pause size={14} />}{" "}
+                {live?.paused ? "Resume" : "Pause"}
+              </button>
+            )}
+          </div>
+        </header>
+        {(error || live?.error) && (
+          <div role="alert" className="notice error">
+            {error || live?.error}
+            <button
+              onClick={() => {
+                setError("");
+                if (desktop) void action(() => command("clear_error"), "");
+                setRefresh((n) => n + 1);
+              }}
+            >
+              Retry
+            </button>
+          </div>
+        )}
+        {message && (
+          <div role="status" className="notice">
+            <Check size={16} />
+            {message}
+          </div>
+        )}
+        {!desktop && (
+          <div className="notice">
+            Browser preview. Open the installed Windows app to collect traffic
+            and use system controls.
+          </div>
+        )}
+        {page === "Dashboard" && (
+          <>
+            <div className="section-heading">
+              <h2>Today at a glance</h2>
+              <span>
+                Measured time: {(coverage / 3600000).toFixed(2)} hours
+              </span>
+            </div>
+            <div className="metrics">
+              {[
+                {
+                  title: "Download speed",
+                  value:
+                    live?.status === "Monitoring"
+                      ? fmt(live.download) + "/s"
+                      : "Unavailable",
+                  icon: ArrowDown,
+                },
+                {
+                  title: "Upload speed",
+                  value:
+                    live?.status === "Monitoring"
+                      ? fmt(live.upload) + "/s"
+                      : "Unavailable",
+                  icon: ArrowUp,
+                },
+                {
+                  title: "Total today",
+                  value: fmt(total(today)),
+                  icon: BarChart3,
+                },
+                { title: "This month", value: fmt(total(month)), icon: Gauge },
+              ].map(({ title, value, icon: Icon }) => (
+                <section className="metric" key={title}>
+                  <div>
+                    <span>{title}</span>
+                    <Icon size={16} />
+                  </div>
+                  <strong className="measured-value">{value}</strong>
+                  <small>
+                    {title.includes("speed")
+                      ? "Selected adapter"
+                      : "Recorded measurements"}
+                  </small>
+                </section>
+              ))}
+            </div>
+            <p className="footnote">
+              Today: {fmt(today.days.reduce((n, d) => n + d.downloaded, 0))}{" "}
+              downloaded · {fmt(today.days.reduce((n, d) => n + d.uploaded, 0))}{" "}
+              uploaded
+            </p>
+            <section className="panel">
+              <div className="panel-heading">
+                <div>
+                  <h2>Live network activity</h2>
+                  <p>Last 60 samples · {binary ? "KiB/s" : "KB/s"}</p>
+                </div>
+                <span className="legend">↓ Download | ↑ Upload</span>
+              </div>
+              {live?.points.length ? (
+                <div className="chart">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart
+                      data={live.points.map((p) => ({
+                        ...p,
+                        download: p.download / (binary ? 1024 : 1000),
+                        upload: p.upload / (binary ? 1024 : 1000),
+                      }))}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                      <XAxis
+                        dataKey="time"
+                        tickFormatter={(v) =>
+                          new Date(Number(v)).toLocaleTimeString([], {
+                            minute: "2-digit",
+                            second: "2-digit",
+                          })
+                        }
+                        minTickGap={50}
+                      />
+                      <YAxis width={50} />
+                      <Tooltip
+                        labelFormatter={(v) =>
+                          new Date(Number(v)).toLocaleTimeString()
+                        }
+                      />
+                      <Area
+                        name="Download"
+                        type="linear"
+                        dataKey="download"
+                        stroke="#3b82c4"
+                        fill="#3b82c4"
+                        fillOpacity={0.12}
+                        isAnimationActive={false}
+                      />
+                      <Area
+                        name="Upload"
+                        type="linear"
+                        dataKey="upload"
+                        stroke="#bd7d38"
+                        fill="#bd7d38"
+                        fillOpacity={0.08}
+                        isAnimationActive={false}
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <div className="empty chart-empty">
+                  <Activity size={28} />
+                  <h3>Waiting for measurements</h3>
+                  <p>Recording begins after two valid adapter readings.</p>
+                </div>
+              )}
+            </section>
+            <section className="panel">
+              <h2>
+                <Wifi size={16} /> Selected adapter
+              </h2>
+              <p className="adapter-name">
+                {live?.adapter || "No adapter selected"}
+              </p>
+              <p className="footnote">
+                Measures all traffic on this adapter, including local traffic.
+                ISP billing may differ. Automatic mode selects one adapter to
+                avoid summing physical and virtual traffic.
+              </p>
+            </section>
+            <section className="panel">
+              <div className="panel-heading">
+                <h2>Top applications today</h2>
+                <button
+                  className="text-button"
+                  onClick={() => setPage("Applications")}
+                >
+                  View applications
+                </button>
+              </div>
+              {appTable(today.applications.slice(0, 5))}
+            </section>
+          </>
+        )}
+        {page === "Applications" && (
+          <>
+            <section className="panel">
+              <div className="panel-heading">
+                <div>
+                  <h2>Application monitoring</h2>
+                  <p>{live?.attribution ?? "Disabled"}</p>
+                </div>
+                <button
+                  disabled={busy || !desktop}
+                  onClick={() =>
+                    void action(
+                      () =>
+                        command(
+                          live?.attribution.startsWith("Recording")
+                            ? "disable_attribution"
+                            : "enable_attribution",
+                        ),
+                      live?.attribution.startsWith("Recording")
+                        ? "Application monitoring stopped"
+                        : "Application monitoring requested",
+                    )
+                  }
+                >
+                  {live?.attribution.startsWith("Recording")
+                    ? "Stop monitoring"
+                    : "Enable monitoring"}
+                </button>
+              </div>
+              <p className="footnote">
+                Windows requests administrator permission for TCP/UDP event
+                tracing. Application bytes cover all adapters and have different
+                coverage from the selected adapter total. Unresolved process
+                identities appear as System / Unattributed. No packet contents
+                are collected.
+              </p>
+            </section>
+            <section className="panel">
+              <div className="toolbar">
+                <input
+                  aria-label="Search applications"
+                  placeholder="Search applications or paths"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+                <select
+                  aria-label="Sort applications"
+                  value={sort}
+                  onChange={(e) => setSort(e.target.value)}
+                >
+                  <option value="usage">Total usage today</option>
+                  <option value="download">Recent download</option>
+                  <option value="upload">Recent upload</option>
+                  <option value="name">Name</option>
+                </select>
+              </div>
+              {appTable(appRows, true)}
+            </section>
+            <section className="panel">
+              <h2>Block a program by executable path</h2>
+              <p className="footnote">
+                Outbound blocking applies to all network destinations, including
+                your local network. Windows system programs and NetControl are
+                protected.
+              </p>
+              <form
+                className="toolbar"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  setConfirm({ path: blockPath, blocked: true });
+                }}
+              >
+                <input
+                  aria-label="Executable path"
+                  placeholder="C:\Program Files\Example\Example.exe"
+                  value={blockPath}
+                  onChange={(e) => setBlockPath(e.target.value)}
+                  required
+                />
+                <button disabled={busy || !desktop}>Block program</button>
+              </form>
+            </section>
+          </>
+        )}
+        {page === "Usage" && (
+          <>
+            <section className="panel">
+              <div className="toolbar">
+                <select
+                  aria-label="Usage period"
+                  defaultValue="today"
+                  onChange={(e) => range(e.target.value)}
+                >
+                  <option value="today">Today</option>
+                  <option value="yesterday">Yesterday</option>
+                  <option value="week">Last 7 days</option>
+                  <option value="thirty">Last 30 days</option>
+                  <option value="month">Current month</option>
+                </select>
+                <label>
+                  From{" "}
+                  <input
+                    type="date"
+                    value={from}
+                    max={to}
+                    onChange={(e) => setFrom(e.target.value)}
+                  />
+                </label>
+                <label>
+                  To{" "}
+                  <input
+                    type="date"
+                    value={to}
+                    min={from}
+                    max={localDate()}
+                    onChange={(e) => setTo(e.target.value)}
+                  />
+                </label>
+                <button
+                  onClick={() =>
+                    exportCsv(usage.days, usage.applications, from, to)
+                  }
+                >
+                  <Download size={14} /> Export CSV
+                </button>
+              </div>
+              <h3>{fmt(total(usage))} recorded</h3>
+              <p className="footnote">
+                Only time monitored by NetControl is included. Missing days have
+                no recorded coverage.
+              </p>
+              {usage.days.length ? (
+                <div className="chart">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={usage.days}>
+                      <CartesianGrid vertical={false} strokeDasharray="3 3" />
+                      <XAxis dataKey="date" minTickGap={30} />
+                      <YAxis tickFormatter={fmt} width={75} />
+                      <Tooltip formatter={(v) => fmt(Number(v))} />
+                      <Bar
+                        name="Downloaded"
+                        dataKey="downloaded"
+                        stackId="usage"
+                        fill="#3b82c4"
+                        isAnimationActive={false}
+                      />
+                      <Bar
+                        name="Uploaded"
+                        dataKey="uploaded"
+                        stackId="usage"
+                        fill="#bd7d38"
+                        isAnimationActive={false}
+                      />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <div className="empty">
+                  <BarChart3 size={30} />
+                  <h3>No usage recorded for this period</h3>
+                </div>
+              )}
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th>Downloaded</th>
+                      <th>Uploaded</th>
+                      <th>Measured time</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {usage.days.map((d) => (
+                      <tr key={d.date}>
+                        <td>{d.date}</td>
+                        <td>{fmt(d.downloaded)}</td>
+                        <td>{fmt(d.uploaded)}</td>
+                        <td>{(d.coverageMs / 3600000).toFixed(2)} hours</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+            <section className="panel">
+              <h2>Applications in this period</h2>
+              <p className="footnote">
+                TCP/UDP measurements across all adapters, collected while
+                application monitoring was enabled.
+              </p>
+              {appTable(usage.applications)}
+            </section>
+          </>
+        )}
+        {page === "Settings" && (
+          <>
+            <section className="panel">
+              <h2>Preferences</h2>
+              {settings ? (
+                <>
+                  <label className="setting-row">
+                    <span>
+                      Appearance<small>Choose a theme or follow Windows.</small>
+                    </span>
+                    <select
+                      disabled={busy}
+                      value={settings.theme}
+                      onChange={(e) =>
+                        void update({
+                          theme: e.target.value as Settings["theme"],
+                        })
+                      }
+                    >
+                      <option value="system">System</option>
+                      <option value="light">Light</option>
+                      <option value="dark">Dark</option>
+                    </select>
+                  </label>
+                  <label className="setting-row">
+                    <span>
+                      Network adapter
+                      <small>
+                        Automatic mode prefers a nonvirtual adapter. Select your
+                        VPN explicitly to measure it.
+                      </small>
+                    </span>
+                    <select
+                      disabled={busy || !desktop}
+                      value={settings.adapter}
+                      onChange={(e) => void update({ adapter: e.target.value })}
+                    >
+                      <option value="">Automatic</option>
+                      {live?.adapters.map((a) => (
+                        <option key={a.name} value={a.name}>
+                          {a.name}
+                          {a.virtualAdapter ? " (virtual/VPN)" : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="setting-row">
+                    <span>
+                      Data units
+                      <small>
+                        Decimal uses 1,000 bytes per KB. Binary uses 1,024 per
+                        KiB.
+                      </small>
+                    </span>
+                    <select
+                      disabled={busy}
+                      value={settings.units}
+                      onChange={(e) =>
+                        void update({
+                          units: e.target.value as Settings["units"],
+                        })
+                      }
+                    >
+                      <option value="decimal">Decimal</option>
+                      <option value="binary">Binary</option>
+                    </select>
+                  </label>
+                  <label className="setting-row">
+                    <span>
+                      History retention
+                      <small>Older records are removed automatically.</small>
+                    </span>
+                    <select
+                      disabled={busy}
+                      value={settings.retentionDays}
+                      onChange={(e) =>
+                        void update({ retentionDays: Number(e.target.value) })
+                      }
+                    >
+                      {[30, 90, 365].map((n) => (
+                        <option key={n} value={n}>
+                          {n} days
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  {[
+                    {
+                      key: "launchAtStartup" as const,
+                      label: "Launch at Windows startup",
+                      help: "Starts NetControl after you sign in.",
+                    },
+                    {
+                      key: "minimizeToTray" as const,
+                      label: "Close to system tray",
+                      help: "Keep monitoring when the window is closed. Use Exit in the tray menu to quit.",
+                    },
+                    {
+                      key: "startMinimized" as const,
+                      label: "Start minimized",
+                      help: "Start with the window hidden in the system tray.",
+                    },
+                  ].map((s) => (
+                    <label className="setting-row" key={s.key}>
+                      <span>
+                        {s.label}
+                        <small>{s.help}</small>
+                      </span>
+                      <input
+                        type="checkbox"
+                        disabled={busy || !desktop}
+                        checked={settings[s.key]}
+                        onChange={(e) =>
+                          void update({ [s.key]: e.target.checked })
+                        }
+                      />
+                    </label>
+                  ))}
+                </>
+              ) : (
+                <p>Loading preferences</p>
+              )}
+            </section>
+            <section className="panel">
+              <h2>Local data</h2>
+              <p className="footnote">
+                History is stored in SQLite on this PC. Resetting usage
+                preserves preferences and firewall rules.
+              </p>
+              <div className="toolbar">
+                <button
+                  onClick={() => {
+                    setPage("Usage");
+                    range("thirty");
+                  }}
+                >
+                  Export usage
+                </button>
+                <button
+                  className="danger"
+                  disabled={busy || !desktop}
+                  onClick={() => setReset(true)}
+                >
+                  Reset recorded history
+                </button>
+              </div>
+            </section>
+            <section className="panel about">
+              <h2>About NetControl</h2>
+              <p>
+                Version {foundation?.version ?? "0.1.0"} · Windows 10 / 11 · MIT
+                License
+              </p>
+              <p>
+                No accounts, advertisements, telemetry, or automatic update
+                checks.
+              </p>
+              <p>Copyright © 2026 Yaser Zarifi</p>
+              <a
+                href="https://github.com/YaserZarifi/NetControl"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Source code and releases
+              </a>
+            </section>
+          </>
+        )}
+        <footer>
+          NetControl<span>Measured locally · Stored on this PC</span>
+        </footer>
+      </main>
+      {details && (
+        <Modal
+          title={applicationName(details.path)}
+          onClose={() => setDetails(undefined)}
+        >
+          <p className="path">
+            {details.path ||
+              "Windows could not resolve this traffic to a process."}
+          </p>
+          <p>
+            Downloaded: {fmt(details.downloaded)}
+            <br />
+            Uploaded: {fmt(details.uploaded)}
+          </p>
+          {detailDays.length > 0 && (
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Downloaded</th>
+                    <th>Uploaded</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {detailDays.map((d) => (
+                    <tr key={d.date}>
+                      <td>{d.date}</td>
+                      <td>{fmt(d.downloaded)}</td>
+                      <td>{fmt(d.uploaded)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <p className="footnote">
+            These are recorded TCP/UDP totals for the period shown in the table.
+            Interface totals and application totals have different coverage.
+          </p>
+        </Modal>
+      )}
+      {confirm && (
+        <Modal
+          title={
+            confirm.blocked
+              ? "Block outbound network access?"
+              : "Remove NetControl restriction?"
+          }
+          onClose={() => setConfirm(undefined)}
+        >
+          <p className="path">{confirm.path}</p>
+          <p>
+            {confirm.blocked
+              ? "This blocks outbound traffic to internet and local network destinations. Windows will request administrator permission."
+              : "Only the rule created by NetControl will be removed. Other firewall or security rules may still restrict this program."}
+          </p>
+          <div className="toolbar">
+            <button
+              disabled={busy}
+              onClick={() => {
+                const change = confirm;
+                setConfirm(undefined);
+                void action(
+                  () => command("set_firewall", change),
+                  change.blocked
+                    ? "Outbound restriction applied"
+                    : "NetControl restriction removed",
+                );
+              }}
+            >
+              Confirm
+            </button>
+            <button onClick={() => setConfirm(undefined)}>Cancel</button>
+          </div>
+        </Modal>
+      )}
+      {reset && (
+        <Modal
+          title="Reset all recorded usage?"
+          onClose={() => setReset(false)}
+        >
+          <p>
+            This permanently removes usage history from this PC. Preferences and
+            firewall restrictions are preserved.
+          </p>
+          <div className="toolbar">
+            <button
+              className="danger"
+              disabled={busy}
+              onClick={() => {
+                setReset(false);
+                void action(
+                  () => command("reset_history"),
+                  "Recorded usage reset",
+                );
+              }}
+            >
+              Reset history
+            </button>
+            <button onClick={() => setReset(false)}>Cancel</button>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
 }

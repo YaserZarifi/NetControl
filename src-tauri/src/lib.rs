@@ -37,6 +37,8 @@ fn save_settings(settings:Settings,state:tauri::State<Arc<AppState>>)->Result<()
     Ok(())
 }
 #[tauri::command]
+fn clear_error(state:tauri::State<Arc<AppState>>)->Result<(),String>{state.monitor.lock().map_err(|e|e.to_string())?.snapshot.error.clear();Ok(())}
+#[tauri::command]
 fn get_snapshot(state:tauri::State<Arc<AppState>>)->Result<monitoring::Snapshot,String>{Ok(state.monitor.lock().map_err(|e|e.to_string())?.snapshot.clone())}
 #[tauri::command]
 fn get_history(from:String,to:String,state:tauri::State<Arc<AppState>>)->Result<History,String>{
@@ -132,7 +134,7 @@ pub fn run(){
             Ok(())
         })
         .on_window_event(|window,event|{if let tauri::WindowEvent::CloseRequested{api,..}=event{let state=window.state::<Arc<AppState>>();let tray=state.store.lock().ok().and_then(|s|s.settings().ok()).is_some_and(|s|s.minimize_to_tray);if tray{api.prevent_close();let _=window.hide();}}})
-        .invoke_handler(tauri::generate_handler![get_foundation,save_settings,get_app_history,get_snapshot,get_history,set_paused,reset_history,enable_attribution,disable_attribution,set_firewall])
+        .invoke_handler(tauri::generate_handler![get_foundation,save_settings,clear_error,get_app_history,get_snapshot,get_history,set_paused,reset_history,enable_attribution,disable_attribution,set_firewall])
         .build(tauri::generate_context!()).expect("NetControl could not start");
     app.run(|app,event|{if matches!(event,tauri::RunEvent::Exit){shutdown(&app.state::<Arc<AppState>>());}});
 }

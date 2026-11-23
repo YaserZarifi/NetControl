@@ -25,7 +25,7 @@ pub fn validate_path(path:&str,blocking:bool)->Result<String,String>{
     }
     Ok(resolved)
 }
-fn owns(rule:&INetFwRule,path:&str)->bool{unsafe{rule.Grouping().is_ok_and(|s|s.to_string()==GROUP)&&rule.ApplicationName().is_ok_and(|s|s.to_string().eq_ignore_ascii_case(path))}}
+fn owns(rule:&INetFwRule,path:&str)->bool{unsafe{rule.Grouping().is_ok_and(|s|s==GROUP)&&rule.ApplicationName().is_ok_and(|s|s.to_string().eq_ignore_ascii_case(path))}}
 pub fn blocked_paths(paths:&[String])->Result<Vec<String>,String>{
     let _com=Com::init()?;
     unsafe{
