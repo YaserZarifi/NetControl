@@ -1,4 +1,5 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
+import { Buffer } from 'node:buffer';
 // A 32-bit Windows icon with a compact network waveform.
 const size = 32;
 const pixels = Buffer.alloc(size * size * 4);
