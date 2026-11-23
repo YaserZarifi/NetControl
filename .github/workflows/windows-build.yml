@@ -5,9 +5,34 @@ on:
   pull_request:
   workflow_dispatch:
   workflow_call:
+concurrency:
+  group: windows-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm run format:check
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:ui
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: frontend-test-results
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: warn
   windows:
     runs-on: windows-2022
     timeout-minutes: 45
@@ -15,7 +40,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: "22"
       - name: Install stable Rust
         shell: pwsh
         run: |
@@ -24,6 +49,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri -> target
+          cache-on-failure: true
       - name: Resolve dependencies
         shell: pwsh
         run: |
@@ -31,20 +57,52 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           if (!(Test-Path src-tauri/Cargo.lock)) { cargo generate-lockfile --manifest-path src-tauri/Cargo.toml; Write-Warning 'Bootstrap build: commit the generated Cargo.lock before release.' }
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Collect dependency license notices
+        run: npm run notices
       - name: Generate application icons
         run: node scripts/create-icons.mjs
       - name: Check TypeScript and lint
         run: npm run check
       - name: Check Rust formatting
-        run: cargo fmt --manifest-path src-tauri/Cargo.toml --check
+        shell: pwsh
+        run: |
+          cargo fmt --manifest-path src-tauri/Cargo.toml --check 2>&1 | Tee-Object rustfmt.log
+          $formatExit = $LASTEXITCODE
+          if ($formatExit -ne 0) {
+            cargo fmt --manifest-path src-tauri/Cargo.toml
+            git diff --binary -- src-tauri > rustfmt.patch
+          }
+          exit $formatExit
       - name: Build frontend for Rust context
         run: npm run build
       - name: Check Rust
         run: cargo clippy --manifest-path src-tauri/Cargo.toml --locked --all-targets -- -D warnings
-      - name: Test persistence and preferences
-        run: cargo test --manifest-path src-tauri/Cargo.toml --locked
+      - name: Test persistence and Windows integrations
+        shell: pwsh
+        run: |
+          cargo test --manifest-path src-tauri/Cargo.toml --locked -- --include-ignored --test-threads=1 2>&1 | Tee-Object native-tests.log
+          exit $LASTEXITCODE
       - name: Package Windows x64 NSIS installer
         run: npm run tauri -- build --target x86_64-pc-windows-msvc --bundles nsis -- --locked
+      - name: Verify installed application startup and collection
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*-setup.exe | Select-Object -First 1
+          $installDirectory = Join-Path $env:RUNNER_TEMP 'NetControl-smoke'
+          $install = Start-Process -FilePath $installer.FullName -ArgumentList '/S', "/D=$installDirectory" -Wait -PassThru -WindowStyle Hidden
+          if ($install.ExitCode -ne 0) { throw "Installer failed: $($install.ExitCode)" }
+          $executable = Join-Path $installDirectory 'NetControl.exe'
+          if (!(Test-Path $executable)) { $executable = Join-Path $installDirectory 'netcontrol.exe' }
+          $process = Start-Process -FilePath $executable -ArgumentList '--smoke-test' -PassThru -WindowStyle Hidden
+          if (!$process.WaitForExit(60000)) { Stop-Process -Id $process.Id -Force; throw 'Installed app did not finish its startup check' }
+          if ($process.ExitCode -ne 0) { throw "Installed app check failed: $($process.ExitCode)" }
+          $report = Join-Path $env:LOCALAPPDATA 'com.netcontrol.desktop/netcontrol-smoke.json'
+          Copy-Item $report installed-app-smoke.json
+          Get-Content installed-app-smoke.json
+          $uninstaller = Get-ChildItem $installDirectory/*uninstall*.exe | Select-Object -First 1
+          if (!$uninstaller) { throw 'Uninstaller was not found' }
+          $uninstall = Start-Process -FilePath $uninstaller.FullName -ArgumentList '/S' -Wait -PassThru -WindowStyle Hidden
+          if ($uninstall.ExitCode -ne 0) { throw "Uninstaller failed: $($uninstall.ExitCode)" }
       - uses: actions/upload-artifact@v4
         with:
           name: NetControl-windows-x64
@@ -56,6 +114,11 @@ jobs:
         with:
           name: build-diagnostics
           path: |
+            native-tests.log
+            THIRD_PARTY_NOTICES.txt
+            installed-app-smoke.json
+            rustfmt.log
+            rustfmt.patch
             package-lock.json
             src-tauri/Cargo.lock
             src-tauri/target/**/build/netcontrol-*/output
