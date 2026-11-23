@@ -34,7 +34,7 @@ Before uninstalling, remove restrictions you no longer want. Uninstall removes t
 
 Edit files locally or in GitHub. The **Windows installer** workflow installs Rust and the Windows build dependencies on a hosted runner, runs checks and native integration tests, packages an x64 NSIS installer, and checks installed startup, collection, and uninstallation. Download `NetControl-windows-x64` from the successful run's Artifacts section. Development pushes do not publish releases.
 
-The first bootstrap run can generate missing dependency locks and uploads them under `build-diagnostics`. Download and commit `package-lock.json` and `src-tauri/Cargo.lock` before considering the build reproducible. Subsequent builds use `npm ci` and Cargo `--locked`. Tagged releases require both committed locks. Never hand-edit or invent lockfiles.
+Both dependency lockfiles are committed. Builds use `npm ci` and Cargo `--locked`. Tagged releases require both locks and matching application versions. The diagnostics artifact preserves locks, formatting output, native test results, and installed-app checks. Never hand-edit or invent lockfiles.
 
 Optional frontend preview requires only Node.js 22 or later:
 
@@ -46,6 +46,8 @@ npm run dev
 After the npm lockfile exists, use `npm ci`. Preview runs at `http://127.0.0.1:1420`. Browser preview has no Windows API access and stores preferences in browser storage. Desktop preferences use SQLite in the per-user application data directory.
 
 Use `npm run check`, `npm run format:check`, and `npm run build` before submitting frontend changes.
+
+Native packaging also runs `npm run notices` to collect dependency license texts. These notices are included in the installed application directory and release assets.
 
 ## Windows installation
 

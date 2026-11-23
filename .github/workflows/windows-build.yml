@@ -63,13 +63,11 @@ jobs:
         run: node scripts/create-icons.mjs
       - name: Check TypeScript and lint
         run: npm run check
-      - name: Format Rust and preserve source patch
+      - name: Check Rust formatting
         shell: pwsh
         run: |
-          cargo fmt --manifest-path src-tauri/Cargo.toml
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          git diff --binary -- src-tauri > rustfmt.patch
-          cargo fmt --manifest-path src-tauri/Cargo.toml --check
+          cargo fmt --manifest-path src-tauri/Cargo.toml --check 2>&1 | Tee-Object rustfmt.log
+          exit $LASTEXITCODE
       - name: Build frontend for Rust context
         run: npm run build
       - name: Check Rust
@@ -114,7 +112,7 @@ jobs:
             native-tests.log
             THIRD_PARTY_NOTICES.txt
             installed-app-smoke.json
-            rustfmt.patch
+            rustfmt.log
             package-lock.json
             src-tauri/Cargo.lock
             src-tauri/target/**/build/netcontrol-*/output

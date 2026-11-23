@@ -98,9 +98,23 @@ fn get_snapshot(state: tauri::State<Arc<AppState>>) -> Result<monitoring::Snapsh
 }
 #[tauri::command]
 fn open_project_page() -> Result<(), String> {
-    use windows::{core::{w, PCWSTR}, Win32::UI::{Shell::ShellExecuteW, WindowsAndMessaging::SW_SHOWNORMAL}};
-    let result = unsafe { ShellExecuteW(None, w!("open"), w!("https://github.com/YaserZarifi/NetControl"), PCWSTR::null(), PCWSTR::null(), SW_SHOWNORMAL) };
-    if result.0 as isize <= 32 { return Err("Windows could not open the project page".into()); }
+    use windows::{
+        core::{w, PCWSTR},
+        Win32::UI::{Shell::ShellExecuteW, WindowsAndMessaging::SW_SHOWNORMAL},
+    };
+    let result = unsafe {
+        ShellExecuteW(
+            None,
+            w!("open"),
+            w!("https://github.com/YaserZarifi/NetControl"),
+            PCWSTR::null(),
+            PCWSTR::null(),
+            SW_SHOWNORMAL,
+        )
+    };
+    if result.0 as isize <= 32 {
+        return Err("Windows could not open the project page".into());
+    }
     Ok(())
 }
 #[tauri::command]

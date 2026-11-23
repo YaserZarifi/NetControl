@@ -130,6 +130,10 @@ pub fn start(state: Arc<crate::AppState>, app: tauri::AppHandle) {
                 Ok(n) => n,
                 Err(e) => {
                     m.snapshot.error = e;
+                    m.snapshot.status = "Adapter query unavailable".into();
+                    m.snapshot.download = 0.0;
+                    m.snapshot.upload = 0.0;
+                    m.snapshot.points.clear();
                     baseline = None;
                     continue;
                 }
@@ -194,6 +198,7 @@ pub fn start(state: Arc<crate::AppState>, app: tauri::AppHandle) {
                 baseline = None;
                 m.snapshot.download = 0.0;
                 m.snapshot.upload = 0.0;
+                m.snapshot.points.clear();
                 m.snapshot.status = if m.snapshot.paused {
                     "Paused"
                 } else {

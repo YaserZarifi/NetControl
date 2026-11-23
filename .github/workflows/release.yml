@@ -37,6 +37,7 @@ jobs:
         shell: bash
         run: |
           cp LICENSE installer/LICENSE.txt
+          cp THIRD_PARTY_NOTICES.txt installer/THIRD_PARTY_NOTICES.txt
           cd installer
           sha256sum *.exe > SHA256SUMS.txt
       - name: Create draft release
@@ -44,4 +45,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ github.ref_name }}
-        run: gh release create "$RELEASE_TAG" installer/*.exe installer/SHA256SUMS.txt installer/LICENSE.txt --draft --verify-tag --title "NetControl $RELEASE_TAG" --notes-file .github/release-notes.md
+        run: gh release create "$RELEASE_TAG" installer/*.exe installer/SHA256SUMS.txt installer/LICENSE.txt installer/THIRD_PARTY_NOTICES.txt --draft --verify-tag --title "NetControl $RELEASE_TAG" --notes-file .github/release-notes.md

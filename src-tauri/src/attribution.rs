@@ -346,18 +346,22 @@ mod tests {
             .to_string_lossy()
             .trim_start_matches("\\\\?\\")
             .to_string();
-        let own_bytes = map
+        let (tcp_down, tcp_up) = map
             .iter()
             .filter(|(path, _)| path.eq_ignore_ascii_case(&own))
-            .map(|(_, v)| v.0 + v.1)
-            .sum::<u64>();
+            .fold((0u64, 0u64), |(down, up), (_, v)| (down + v.0, up + v.1));
         assert!(
-            own_bytes >= 1048576,
-            "Expected attributed transfer bytes; got {own_bytes}, observed paths: {:?}",
-            map.keys().collect::<Vec<_>>()
+            tcp_down >= 1048576 && tcp_up >= 1048576,
+            "Expected TCP download and upload bytes, got {tcp_down}/{tcp_up}"
         );
         let udp_map = udp_data.lock().unwrap();
-        let udp_bytes = udp_map.iter().filter(|(path, _)| path.eq_ignore_ascii_case(&own)).map(|(_, v)| v.0 + v.1).sum::<u64>();
-        assert!(udp_bytes >= 20480, "Expected attributed UDP bytes; got {udp_bytes}");
+        let (udp_down, udp_up) = udp_map
+            .iter()
+            .filter(|(path, _)| path.eq_ignore_ascii_case(&own))
+            .fold((0u64, 0u64), |(down, up), (_, v)| (down + v.0, up + v.1));
+        assert!(
+            udp_down >= 20480 && udp_up >= 20480,
+            "Expected UDP download and upload bytes, got {udp_down}/{udp_up}"
+        );
     }
 }
