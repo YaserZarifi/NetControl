@@ -17,13 +17,24 @@ struct Foundation {
 
 #[tauri::command]
 fn get_foundation(state: tauri::State<AppState>) -> Result<Foundation, String> {
-    let store = state.0.lock().map_err(|_| "Preferences are unavailable".to_string())?;
-    Ok(Foundation { version: env!("CARGO_PKG_VERSION"), database_ready: true, settings: store.settings()? })
+    let store = state
+        .0
+        .lock()
+        .map_err(|_| "Preferences are unavailable".to_string())?;
+    Ok(Foundation {
+        version: env!("CARGO_PKG_VERSION"),
+        database_ready: true,
+        settings: store.settings()?,
+    })
 }
 
 #[tauri::command]
 fn save_settings(settings: Settings, state: tauri::State<AppState>) -> Result<(), String> {
-    state.0.lock().map_err(|_| "Preferences are unavailable".to_string())?.save_settings(&settings)
+    state
+        .0
+        .lock()
+        .map_err(|_| "Preferences are unavailable".to_string())?
+        .save_settings(&settings)
 }
 
 pub fn run() {
@@ -31,7 +42,8 @@ pub fn run() {
         .setup(|app| {
             let directory = app.path().app_local_data_dir()?;
             std::fs::create_dir_all(&directory)?;
-            let store = Store::open(&directory.join("netcontrol.sqlite")).map_err(std::io::Error::other)?;
+            let store = Store::open(&directory.join("netcontrol.sqlite"))
+                .map_err(std::io::Error::other)?;
             app.manage(AppState(Mutex::new(store)));
             Ok(())
         })
