@@ -1,5 +1,6 @@
 mod storage;
 mod monitoring;
+mod adapters;
 mod firewall;
 mod attribution;
 
@@ -101,7 +102,7 @@ pub fn run(){
             let exit=MenuItem::with_id(app,"exit","Exit",true,None::<&str>)?;
             let menu=Menu::with_items(app,&[&open,&pause,&resume,&exit])?;
             TrayIconBuilder::with_id("main").icon(app.default_window_icon().ok_or("Missing tray icon")?.clone()).tooltip("NetControl").menu(&menu).show_menu_on_left_click(false)
-                .on_menu_event(|app,event|match event.id.as_ref(){"open"=>show(app),"pause"|"resume"=>{let state=app.state::<Arc<AppState>>();if let Ok(mut m)=state.monitor.lock(){m.epoch=m.epoch.wrapping_add(1);m.snapshot.paused=event.id.as_ref()=="pause";m.snapshot.points.clear();}},"exit"=>app.exit(0),_=>{}})
+                .on_menu_event(|app,event|match event.id.as_ref(){"open"=>show(app),"pause"|"resume"=>{let state=app.state::<Arc<AppState>>();if let Ok(mut m)=state.monitor.lock(){m.epoch=m.epoch.wrapping_add(1);m.snapshot.paused=event.id.as_ref()=="pause";m.snapshot.points.clear();};},"exit"=>app.exit(0),_=>{}})
                 .on_tray_icon_event(|tray,event|{if matches!(event,TrayIconEvent::DoubleClick{..}){show(tray.app_handle());}}).build(app)?;
             if settings.start_minimized{if let Some(window)=app.get_webview_window("main"){window.hide()?;}}
             monitoring::start(state,app.handle().clone());Ok(())

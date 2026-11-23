@@ -2,7 +2,7 @@ use crate::storage::{AppUsage, Store};
 use chrono::Local;
 use serde::Serialize;
 use std::{collections::{HashMap, VecDeque}, sync::{Arc, Mutex}, time::{Duration, Instant}};
-use sysinfo::Networks;
+
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -50,23 +50,23 @@ pub fn flush(m: &mut Monitor, store: &mut Store) -> Result<(),String> {
 }
 pub fn start(state: Arc<crate::AppState>, app: tauri::AppHandle) {
     std::thread::spawn(move || {
-        let mut networks=Networks::new_with_refreshed_list();
         let mut baseline: Option<(String,u64,u64,Instant,i64,String,i32,u64)>=None;
         let mut cleanup=Instant::now()-Duration::from_secs(3600);
         loop {
             std::thread::sleep(Duration::from_secs(1));
-            networks.refresh(true);
+            let reading=crate::adapters::read();
             let now=Local::now(); let instant=Instant::now();
             let date=now.date_naive().to_string(); let offset=now.offset().local_minus_utc();
             let Ok(mut m)=state.monitor.lock() else { break };
             let Ok(mut store)=state.store.lock() else { break };
+            let networks=match reading {Ok(n)=>n,Err(e)=>{m.snapshot.error=e;baseline=None;continue;}};
             let settings=match store.settings() { Ok(s)=>s,Err(e)=>{m.snapshot.error=e;continue} };
-            m.snapshot.adapters=networks.iter().filter(|(n,_)|!n.to_lowercase().contains("loopback")).map(|(n,_)|Adapter{name:n.clone(),virtual_adapter:is_virtual(n)}).collect();
+            m.snapshot.adapters=networks.iter().filter(|(_,d)|d.online).map(|(n,d)|Adapter{name:n.clone(),virtual_adapter:!d.physical||is_virtual(&d.description)}).collect();
             m.snapshot.adapters.sort_by(|a,b|a.name.cmp(&b.name));
-            let selected=if !settings.adapter.is_empty() { networks.get(&settings.adapter).map(|d|(settings.adapter.clone(),d)) }
+            let selected=if !settings.adapter.is_empty() { networks.get(&settings.adapter).filter(|d|d.online).map(|d|(settings.adapter.clone(),d)) }
             else {
-                let prior=networks.get(&m.snapshot.adapter).filter(|_|!is_virtual(&m.snapshot.adapter));
-                prior.map(|d|(m.snapshot.adapter.clone(),d)).or_else(||networks.iter().filter(|(n,_)|!is_virtual(n)).max_by_key(|(_,d)|d.total_received().saturating_add(d.total_transmitted())).map(|(n,d)|(n.clone(),d)))
+                let prior=networks.get(&m.snapshot.adapter).filter(|d|d.online);
+                prior.map(|d|(m.snapshot.adapter.clone(),d)).or_else(||networks.iter().filter(|(_,d)|d.online).max_by_key(|(n,d)|((d.physical&&!is_virtual(n)) as u8,d.total_received().saturating_add(d.total_transmitted()))).map(|(n,d)|(n.clone(),d)))
             };
             let active=m.helper_active.load(std::sync::atomic::Ordering::Relaxed);
             if active {m.snapshot.attribution="Recording TCP/UDP across all adapters".into();}
