@@ -30,3 +30,5 @@ export function exportCsv(days:DailyUsage[],apps:AppUsage[],from:string,to:strin
   const blob=new Blob(['\uFEFF'+rows.map(row=>row.map(quote).join(',')).join('\r\n')],{type:'text/csv;charset=utf-8'});
   const url=URL.createObjectURL(blob);const link=document.createElement('a');link.href=url;link.download=`NetControl-${from}-to-${to}.csv`;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
+
+export async function appHistory(path:string,from:string,to:string):Promise<DailyUsage[]>{return desktop?invoke('get_app_history',{path,from,to}):[];}

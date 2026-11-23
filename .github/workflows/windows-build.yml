@@ -50,6 +50,25 @@ jobs:
         run: cargo test --manifest-path src-tauri/Cargo.toml --locked -- --include-ignored --test-threads=1
       - name: Package Windows x64 NSIS installer
         run: npm run tauri -- build --target x86_64-pc-windows-msvc --bundles nsis -- --locked
+      - name: Verify installed application startup and collection
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*-setup.exe | Select-Object -First 1
+          $installDirectory = Join-Path $env:RUNNER_TEMP 'NetControl-smoke'
+          $install = Start-Process -FilePath $installer.FullName -ArgumentList '/S', "/D=$installDirectory" -Wait -PassThru -WindowStyle Hidden
+          if ($install.ExitCode -ne 0) { throw "Installer failed: $($install.ExitCode)" }
+          $executable = Join-Path $installDirectory 'NetControl.exe'
+          if (!(Test-Path $executable)) { $executable = Join-Path $installDirectory 'netcontrol.exe' }
+          $process = Start-Process -FilePath $executable -ArgumentList '--smoke-test' -PassThru -WindowStyle Hidden
+          if (!$process.WaitForExit(60000)) { Stop-Process -Id $process.Id -Force; throw 'Installed app did not finish its startup check' }
+          if ($process.ExitCode -ne 0) { throw "Installed app check failed: $($process.ExitCode)" }
+          $report = Join-Path $env:LOCALAPPDATA 'com.netcontrol.desktop/netcontrol-smoke.json'
+          Copy-Item $report installed-app-smoke.json
+          Get-Content installed-app-smoke.json
+          $uninstaller = Get-ChildItem $installDirectory/*uninstall*.exe | Select-Object -First 1
+          if (!$uninstaller) { throw 'Uninstaller was not found' }
+          $uninstall = Start-Process -FilePath $uninstaller.FullName -ArgumentList '/S' -Wait -PassThru -WindowStyle Hidden
+          if ($uninstall.ExitCode -ne 0) { throw "Uninstaller failed: $($uninstall.ExitCode)" }
       - uses: actions/upload-artifact@v4
         with:
           name: NetControl-windows-x64
@@ -61,6 +80,7 @@ jobs:
         with:
           name: build-diagnostics
           path: |
+            installed-app-smoke.json
             rustfmt.patch
             package-lock.json
             src-tauri/Cargo.lock

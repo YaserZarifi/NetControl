@@ -17,7 +17,7 @@ fn process_path(pid:u32,event_time:i64)->String{
         let _=CloseHandle(handle);result
     }
 }
-fn callback(data:Arc<Mutex<HashMap<String,(u64,u64)>>>,failures:Arc<AtomicBool>)->impl FnMut(&EventRecord,&SchemaLocator)+Send+'static{
+fn callback(data:crate::monitoring::ByteMap,failures:Arc<AtomicBool>)->impl FnMut(&EventRecord,&SchemaLocator)+Send+'static{
     move |record,locator|{
         let opcode=record.opcode();if !matches!(opcode,10|11|26|27){return;}
         let Ok(schema)=locator.event_schema(record)else{failures.store(true,Ordering::Relaxed);return;};

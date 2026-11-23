@@ -23,11 +23,13 @@ pub struct Snapshot {
     pub download: f64, pub upload: f64, pub status: String,
     pub attribution: String, pub applications: Vec<AppUsage>, pub error: String,
 }
+pub type ByteMap = Arc<Mutex<HashMap<String,(u64,u64)>>>;
+type Baseline = (String,u64,u64,Instant,i64,String,i32,u64);
 pub struct Monitor {
     pub snapshot: Snapshot,
     pub pending: Vec<Interval>,
     pub epoch: u64,
-    pub incoming: Arc<Mutex<HashMap<String, (u64,u64)>>>,
+    pub incoming: ByteMap,
     pub helper_active: Arc<std::sync::atomic::AtomicBool>,
     pub helper_stop: Arc<std::sync::atomic::AtomicBool>,
 }
@@ -50,7 +52,7 @@ pub fn flush(m: &mut Monitor, store: &mut Store) -> Result<(),String> {
 }
 pub fn start(state: Arc<crate::AppState>, app: tauri::AppHandle) {
     std::thread::spawn(move || {
-        let mut baseline: Option<(String,u64,u64,Instant,i64,String,i32,u64)>=None;
+        let mut baseline: Option<Baseline>=None;
         let mut cleanup=Instant::now()-Duration::from_secs(3600);
         loop {
             std::thread::sleep(Duration::from_secs(1));
@@ -79,7 +81,7 @@ pub fn start(state: Arc<crate::AppState>, app: tauri::AppHandle) {
                 if let Err(e)=flush(&mut m,&mut store){m.snapshot.error=e;}
                 continue;
             }
-            let (name,network)=selected.unwrap();
+            let Some((name,network))=selected else {continue;};
             let rx=network.total_received();let tx=network.total_transmitted();
             m.snapshot.adapter=name.clone();m.snapshot.status="Monitoring".into();
             if let Some((prior,prx,ptx,timestamp,start,prior_date,prior_offset,epoch))=baseline.take() {

@@ -53,6 +53,12 @@ fn get_history(from:String,to:String,state:tauri::State<Arc<AppState>>)->Result<
     Ok(History{days,applications,blocked_paths})
 }
 #[tauri::command]
+fn get_app_history(path:String,from:String,to:String,state:tauri::State<Arc<AppState>>)->Result<Vec<storage::DailyUsage>,String>{
+    NaiveDate::parse_from_str(&from,"%Y-%m-%d").map_err(|_|"Invalid date")?;
+    NaiveDate::parse_from_str(&to,"%Y-%m-%d").map_err(|_|"Invalid date")?;
+    state.store.lock().map_err(|e|e.to_string())?.app_history(&path,&from,&to)
+}
+#[tauri::command]
 fn set_paused(paused:bool,state:tauri::State<Arc<AppState>>)->Result<(),String>{
     let mut m=state.monitor.lock().map_err(|e|e.to_string())?;let mut store=state.store.lock().map_err(|e|e.to_string())?;
     monitoring::flush(&mut m,&mut store)?;m.epoch=m.epoch.wrapping_add(1);m.snapshot.paused=paused;m.snapshot.points.clear();Ok(())
@@ -105,10 +111,28 @@ pub fn run(){
                 .on_menu_event(|app,event|match event.id.as_ref(){"open"=>show(app),"pause"|"resume"=>{let state=app.state::<Arc<AppState>>();if let Ok(mut m)=state.monitor.lock(){m.epoch=m.epoch.wrapping_add(1);m.snapshot.paused=event.id.as_ref()=="pause";m.snapshot.points.clear();};},"exit"=>app.exit(0),_=>{}})
                 .on_tray_icon_event(|tray,event|{if matches!(event,TrayIconEvent::DoubleClick{..}){show(tray.app_handle());}}).build(app)?;
             if settings.start_minimized{if let Some(window)=app.get_webview_window("main"){window.hide()?;}}
-            monitoring::start(state,app.handle().clone());Ok(())
+            monitoring::start(state.clone(),app.handle().clone());
+            if std::env::args().any(|a|a=="--smoke-test"){
+                let handle=app.handle().clone();
+                std::thread::spawn(move||{
+                    std::thread::sleep(std::time::Duration::from_secs(15));
+                    let result=(||->Result<(),String>{
+                        let mut m=state.monitor.lock().map_err(|e|e.to_string())?;
+                        let mut store=state.store.lock().map_err(|e|e.to_string())?;
+                        monitoring::flush(&mut m,&mut store)?;
+                        let visible=handle.get_webview_window("main").is_some_and(|w|w.is_visible().unwrap_or(false));
+                        let success=visible&&m.snapshot.points.len()>=2&&m.snapshot.error.is_empty();
+                        let report=serde_json::json!({"version":env!("CARGO_PKG_VERSION"),"visible":visible,"samples":m.snapshot.points.len(),"status":m.snapshot.status,"error":m.snapshot.error,"success":success});
+                        std::fs::write(directory.join("netcontrol-smoke.json"),report.to_string()).map_err(|e|e.to_string())?;
+                        if success{Ok(())}else{Err("Installed application smoke test failed".into())}
+                    })();
+                    handle.exit(if result.is_ok(){0}else{1});
+                });
+            }
+            Ok(())
         })
         .on_window_event(|window,event|{if let tauri::WindowEvent::CloseRequested{api,..}=event{let state=window.state::<Arc<AppState>>();let tray=state.store.lock().ok().and_then(|s|s.settings().ok()).is_some_and(|s|s.minimize_to_tray);if tray{api.prevent_close();let _=window.hide();}}})
-        .invoke_handler(tauri::generate_handler![get_foundation,save_settings,get_snapshot,get_history,set_paused,reset_history,enable_attribution,disable_attribution,set_firewall])
+        .invoke_handler(tauri::generate_handler![get_foundation,save_settings,get_app_history,get_snapshot,get_history,set_paused,reset_history,enable_attribution,disable_attribution,set_firewall])
         .build(tauri::generate_context!()).expect("NetControl could not start");
     app.run(|app,event|{if matches!(event,tauri::RunEvent::Exit){shutdown(&app.state::<Arc<AppState>>());}});
 }
