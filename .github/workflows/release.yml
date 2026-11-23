@@ -1,7 +1,7 @@
 name: Tagged release
 on:
   push:
-    tags: ['v*']
+    tags: ["v*"]
 permissions:
   contents: read
 jobs:
@@ -9,12 +9,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
       - name: Require committed dependency locks and matching version
         shell: bash
         run: |
           test -f package-lock.json
           test -f src-tauri/Cargo.lock
           node -e 'const p=require("./package.json"); const t=require("./src-tauri/tauri.conf.json"); if(process.env.GITHUB_REF_NAME!==`v${p.version}` || p.version!==t.version) process.exit(1)'
+          python3 -c 'import json,tomllib; assert tomllib.load(open("src-tauri/Cargo.toml","rb"))["package"]["version"] == json.load(open("package.json"))["version"]'
   build:
     needs: validate
     uses: ./.github/workflows/windows-build.yml
@@ -24,13 +28,20 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           name: NetControl-windows-x64
           path: installer
+      - name: Prepare checksums and license
+        shell: bash
+        run: |
+          cp LICENSE installer/LICENSE.txt
+          cd installer
+          sha256sum *.exe > SHA256SUMS.txt
       - name: Create draft release
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ github.ref_name }}
-        run: gh release create "$RELEASE_TAG" installer/*.exe --draft --verify-tag --title "NetControl $RELEASE_TAG" --generate-notes
+        run: gh release create "$RELEASE_TAG" installer/*.exe installer/SHA256SUMS.txt installer/LICENSE.txt --draft --verify-tag --title "NetControl $RELEASE_TAG" --notes-file .github/release-notes.md

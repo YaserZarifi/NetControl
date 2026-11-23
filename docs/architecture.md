@@ -1,7 +1,15 @@
 # Architecture
 
-The React webview provides navigation and preferences. Two narrow Tauri commands read application status and persist validated preferences. No shell, process, filesystem, network, or dialog plugins are exposed to the frontend. A restrictive production CSP disallows remote content.
+The React webview renders four screens. Validated Tauri commands expose measurements, preferences, history, reset, pause/resume, and specific firewall actions. No shell, arbitrary filesystem, or general elevated executor is exposed to the frontend. The production content security policy restricts scripts and network connections.
 
-Rust initializes a per-user SQLite database through an atomic, versioned migration. WAL mode, a busy timeout, foreign keys, and full synchronization protect local preferences. A mutex serializes connection access; there is no background polling in the foundation build. The schema reserves interval and application records for later collection, with separate received/transmitted counters and UTC times plus recorded local dates and offsets. No records are inserted until measurement exists.
+A Rust thread reads Windows `GetIfTable2` counters approximately once per second. One connected interface contributes to totals. Automatic selection prefers hardware interfaces and retains the selected interface until unavailable. Manual selection includes VPN interfaces. Cumulative byte differences use monotonic elapsed time. Invalid intervals are discarded after resets, interface switches, pause/reset generations, sleep gaps, local-date changes, or UTC-offset changes. Graph memory is bounded to 60 samples.
 
-The main process runs as the current user. No elevation or firewall changes exist in this milestone. Future firewall implementation must use a narrowly scoped helper and native APIs, with validated executable paths and application-owned rule identifiers. No unrestricted elevated executor may be exposed to the frontend.
+SQLite uses versioned migrations, WAL mode, a busy timeout, foreign keys, and full synchronization. Measurements are batched every five samples and flushed on queries, pause, and exit. Intervals preserve UTC times, local dates, offsets, adapter identity, counters, and duration. Application aggregates use a separate table because their coverage differs. Failed writes are visible and pending memory is bounded.
+
+The optional tracing helper runs the same executable in a dedicated mode before webview startup. Elevation uses `ShellExecuteExW` with `runas`. It observes TCP/UDP kernel events through `ferrisetw`. Process creation time is checked against event time to reject reused PIDs. Failed resolution is retained as unattributed traffic. Bounded maps aggregate bytes without packet contents.
+
+A loopback connection uses a random session token. The UI sends only keepalive bytes; the tracing helper has no operation-dispatch interface. Timeouts stop it after disconnection. Its uniquely named trace session is dropped on exit. The UI remains unelevated.
+
+Firewall helpers accept only block/remove operations and a hex-encoded executable path. Arguments are validated again after elevation. COM APIs create outbound rules with names derived from case-insensitive path hashes. Group ownership and executable identity must match before an existing rule is changed. System executables, network/device paths, malformed paths, and NetControl itself are protected. Rule state is checked after changes. Unrelated rules are preserved.
+
+Startup uses the current user's Run key; uninstall removes that entry. Single-instance handling opens the existing window. Tray controls show current rates and provide Open, Pause, Resume, and Exit.
