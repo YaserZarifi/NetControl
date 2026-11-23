@@ -120,44 +120,82 @@ pub struct AppUsage {
 
 impl Store {
     pub fn record(&mut self, samples: &[crate::monitoring::Interval]) -> Result<(), String> {
-        let tx = self.0.transaction().map_err(|e|e.to_string())?;
+        let tx = self.0.transaction().map_err(|e| e.to_string())?;
         for s in samples {
             tx.execute("INSERT INTO traffic_intervals(start_utc_ms,end_utc_ms,local_date,utc_offset_seconds,adapter_id,downloaded_bytes,uploaded_bytes,coverage_ms) VALUES(?1,?2,?3,?4,?5,?6,?7,?8)",params![s.start,s.end,s.date,s.offset,s.adapter,s.downloaded as i64,s.uploaded as i64,s.coverage as i64]).map_err(|e|e.to_string())?;
             for app in &s.apps {
                 tx.execute("INSERT INTO app_daily(local_date,path,downloaded_bytes,uploaded_bytes) VALUES(?1,?2,?3,?4) ON CONFLICT(local_date,path) DO UPDATE SET downloaded_bytes=downloaded_bytes+excluded.downloaded_bytes,uploaded_bytes=uploaded_bytes+excluded.uploaded_bytes",params![s.date,app.path,app.downloaded as i64,app.uploaded as i64]).map_err(|e|e.to_string())?;
             }
         }
-        tx.commit().map_err(|e|e.to_string())
+        tx.commit().map_err(|e| e.to_string())
     }
 
     pub fn history(&self, from: &str, to: &str) -> Result<Vec<DailyUsage>, String> {
         let mut query=self.0.prepare("SELECT local_date,SUM(downloaded_bytes),SUM(uploaded_bytes),SUM(coverage_ms) FROM traffic_intervals WHERE local_date BETWEEN ?1 AND ?2 GROUP BY local_date ORDER BY local_date").map_err(|e|e.to_string())?;
-        let rows=query.query_map(params![from,to],|r|Ok(DailyUsage{date:r.get(0)?,downloaded:r.get(1)?,uploaded:r.get(2)?,coverage_ms:r.get(3)?})).map_err(|e|e.to_string())?;
-        rows.collect::<Result<Vec<_>,_>>().map_err(|e|e.to_string())
+        let rows = query
+            .query_map(params![from, to], |r| {
+                Ok(DailyUsage {
+                    date: r.get(0)?,
+                    downloaded: r.get(1)?,
+                    uploaded: r.get(2)?,
+                    coverage_ms: r.get(3)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())
     }
 
     pub fn applications(&self, from: &str, to: &str) -> Result<Vec<AppUsage>, String> {
         let mut query=self.0.prepare("SELECT path,SUM(downloaded_bytes),SUM(uploaded_bytes) FROM app_daily WHERE local_date BETWEEN ?1 AND ?2 GROUP BY path ORDER BY SUM(downloaded_bytes)+SUM(uploaded_bytes) DESC LIMIT 500").map_err(|e|e.to_string())?;
-        let rows=query.query_map(params![from,to],|r|Ok(AppUsage{path:r.get(0)?,downloaded:r.get(1)?,uploaded:r.get(2)?})).map_err(|e|e.to_string())?;
-        rows.collect::<Result<Vec<_>,_>>().map_err(|e|e.to_string())
+        let rows = query
+            .query_map(params![from, to], |r| {
+                Ok(AppUsage {
+                    path: r.get(0)?,
+                    downloaded: r.get(1)?,
+                    uploaded: r.get(2)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())
     }
 
-    pub fn app_history(&self,path:&str,from:&str,to:&str)->Result<Vec<DailyUsage>,String>{
+    pub fn app_history(&self, path: &str, from: &str, to: &str) -> Result<Vec<DailyUsage>, String> {
         let mut q=self.0.prepare("SELECT local_date,downloaded_bytes,uploaded_bytes FROM app_daily WHERE path=?1 AND local_date BETWEEN ?2 AND ?3 ORDER BY local_date").map_err(|e|e.to_string())?;
-        let rows=q.query_map(params![path,from,to],|r|Ok(DailyUsage{date:r.get(0)?,downloaded:r.get(1)?,uploaded:r.get(2)?,coverage_ms:0})).map_err(|e|e.to_string())?;
-        rows.collect::<Result<Vec<_>,_>>().map_err(|e|e.to_string())
+        let rows = q
+            .query_map(params![path, from, to], |r| {
+                Ok(DailyUsage {
+                    date: r.get(0)?,
+                    downloaded: r.get(1)?,
+                    uploaded: r.get(2)?,
+                    coverage_ms: 0,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())
     }
 
     pub fn rule_paths(&self) -> Result<Vec<String>, String> {
-        let mut q=self.0.prepare("SELECT executable_path FROM firewall_rules").map_err(|e|e.to_string())?;
-        let rows=q.query_map([],|r|r.get(0)).map_err(|e|e.to_string())?;
-        rows.collect::<Result<Vec<_>,_>>().map_err(|e|e.to_string())
+        let mut q = self
+            .0
+            .prepare("SELECT executable_path FROM firewall_rules")
+            .map_err(|e| e.to_string())?;
+        let rows = q.query_map([], |r| r.get(0)).map_err(|e| e.to_string())?;
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())
     }
-    pub fn save_rule(&self, path:&str, blocked:bool) -> Result<(),String> {
+    pub fn save_rule(&self, path: &str, blocked: bool) -> Result<(), String> {
         if blocked {
             self.0.execute("INSERT OR REPLACE INTO firewall_rules(rule_id,executable_path,direction,created_utc_ms) VALUES(?1,?2,'outbound',?3)",params![crate::firewall::rule_id(path),path,chrono::Utc::now().timestamp_millis()]).map_err(|e|e.to_string())?;
         } else {
-            self.0.execute("DELETE FROM firewall_rules WHERE rule_id=?1",[crate::firewall::rule_id(path)]).map_err(|e|e.to_string())?;
+            self.0
+                .execute(
+                    "DELETE FROM firewall_rules WHERE rule_id=?1",
+                    [crate::firewall::rule_id(path)],
+                )
+                .map_err(|e| e.to_string())?;
         }
         Ok(())
     }
@@ -167,9 +205,18 @@ impl Store {
     }
 
     pub fn cleanup(&self, retention: u16) -> Result<(), String> {
-        let cutoff=(chrono::Local::now().date_naive()-chrono::Duration::days(i64::from(retention))).to_string();
-        self.0.execute("DELETE FROM traffic_intervals WHERE local_date < ?1",[&cutoff]).map_err(|e|e.to_string())?;
-        self.0.execute("DELETE FROM app_daily WHERE local_date < ?1",[&cutoff]).map_err(|e|e.to_string())?;
+        let cutoff = (chrono::Local::now().date_naive()
+            - chrono::Duration::days(i64::from(retention)))
+        .to_string();
+        self.0
+            .execute(
+                "DELETE FROM traffic_intervals WHERE local_date < ?1",
+                [&cutoff],
+            )
+            .map_err(|e| e.to_string())?;
+        self.0
+            .execute("DELETE FROM app_daily WHERE local_date < ?1", [&cutoff])
+            .map_err(|e| e.to_string())?;
         Ok(())
     }
 }
@@ -232,24 +279,57 @@ mod tests {
 mod accounting_tests {
     use super::*;
     #[test]
-    fn records_totals_and_reset_preserves_preferences_and_rules(){
-        let mut store=Store::open(Path::new(":memory:")).unwrap();
-        let settings=Settings{theme:"dark".into(),..Default::default()};store.save_settings(&settings).unwrap();
-        let path="C:\\Example\\example.exe";
-        store.save_rule(path,true).unwrap();
-        let sample=crate::monitoring::Interval{start:0,end:1000,date:"2026-11-23".into(),offset:16200,adapter:"Wi-Fi".into(),downloaded:100,uploaded:20,coverage:1000,apps:vec![AppUsage{path:path.into(),downloaded:60,uploaded:10}]};
-        store.record(&[sample.clone(),sample]).unwrap();
-        let day=store.history("2026-11-23","2026-11-23").unwrap();
-        assert_eq!((day[0].downloaded,day[0].uploaded,day[0].coverage_ms),(200,40,2000));
-        let apps=store.applications("2026-11-23","2026-11-23").unwrap();assert_eq!((apps[0].downloaded,apps[0].uploaded),(120,20));
+    fn records_totals_and_reset_preserves_preferences_and_rules() {
+        let mut store = Store::open(Path::new(":memory:")).unwrap();
+        let settings = Settings {
+            theme: "dark".into(),
+            ..Default::default()
+        };
+        store.save_settings(&settings).unwrap();
+        let path = "C:\\Example\\example.exe";
+        store.save_rule(path, true).unwrap();
+        let sample = crate::monitoring::Interval {
+            start: 0,
+            end: 1000,
+            date: "2026-11-23".into(),
+            offset: 16200,
+            adapter: "Wi-Fi".into(),
+            downloaded: 100,
+            uploaded: 20,
+            coverage: 1000,
+            apps: vec![AppUsage {
+                path: path.into(),
+                downloaded: 60,
+                uploaded: 10,
+            }],
+        };
+        store.record(&[sample.clone(), sample]).unwrap();
+        let day = store.history("2026-11-23", "2026-11-23").unwrap();
+        assert_eq!(
+            (day[0].downloaded, day[0].uploaded, day[0].coverage_ms),
+            (200, 40, 2000)
+        );
+        let apps = store.applications("2026-11-23", "2026-11-23").unwrap();
+        assert_eq!((apps[0].downloaded, apps[0].uploaded), (120, 20));
         store.reset().unwrap();
-        assert!(store.history("2026-11-23","2026-11-23").unwrap().is_empty());
-        assert!(store.applications("2026-11-23","2026-11-23").unwrap().is_empty());
-        assert_eq!(store.settings().unwrap(),settings);assert_eq!(store.rule_paths().unwrap(),vec![path]);
+        assert!(store
+            .history("2026-11-23", "2026-11-23")
+            .unwrap()
+            .is_empty());
+        assert!(store
+            .applications("2026-11-23", "2026-11-23")
+            .unwrap()
+            .is_empty());
+        assert_eq!(store.settings().unwrap(), settings);
+        assert_eq!(store.rule_paths().unwrap(), vec![path]);
     }
     #[test]
-    fn loads_legacy_preferences_with_new_defaults(){
-        let settings:Settings=serde_json::from_str(r#"{"theme":"dark","units":"binary","retentionDays":30}"#).unwrap();
-        assert!(settings.minimize_to_tray);assert!(!settings.launch_at_startup);assert_eq!(settings.adapter,"");
+    fn loads_legacy_preferences_with_new_defaults() {
+        let settings: Settings =
+            serde_json::from_str(r#"{"theme":"dark","units":"binary","retentionDays":30}"#)
+                .unwrap();
+        assert!(settings.minimize_to_tray);
+        assert!(!settings.launch_at_startup);
+        assert_eq!(settings.adapter, "");
     }
 }
