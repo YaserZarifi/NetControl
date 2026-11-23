@@ -312,7 +312,9 @@ mod accounting_tests {
                 uploaded: 20,
             }],
         };
-        store.record(&[sample.clone(), sample], &[app_sample]).unwrap();
+        store
+            .record(&[sample.clone(), sample], &[app_sample])
+            .unwrap();
         let day = store.history("2026-11-23", "2026-11-23").unwrap();
         assert_eq!(
             (day[0].downloaded, day[0].uploaded, day[0].coverage_ms),
@@ -344,7 +346,10 @@ mod accounting_tests {
             }],
         };
         store.record(&[], &[sample]).unwrap();
-        assert!(store.history("2026-11-23", "2026-11-23").unwrap().is_empty());
+        assert!(store
+            .history("2026-11-23", "2026-11-23")
+            .unwrap()
+            .is_empty());
         let apps = store.applications("2026-11-23", "2026-11-23").unwrap();
         assert_eq!((apps[0].downloaded, apps[0].uploaded), (4096, 1024));
     }

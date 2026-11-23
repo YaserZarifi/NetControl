@@ -223,7 +223,8 @@ pub fn start(state: Arc<crate::AppState>, app: tauri::AppHandle) {
             }
             if m.pending_apps.len() > 60 {
                 m.pending_apps.clear();
-                m.snapshot.error = "Storage unavailable: application measurements were dropped".into();
+                m.snapshot.error =
+                    "Storage unavailable: application measurements were dropped".into();
             }
             if cleanup.elapsed() > Duration::from_secs(3600) {
                 if let Err(e) = store.cleanup(settings.retention_days) {
