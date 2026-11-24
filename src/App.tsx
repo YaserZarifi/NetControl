@@ -900,7 +900,7 @@ export default function App() {
             <section className="panel about">
               <h2>About NetControl</h2>
               <p>
-                Version {foundation?.version ?? "0.1.0"} · Windows 10 / 11 · MIT
+                Version {foundation?.version ?? "0.1.1"} · Windows 10 / 11 · MIT
                 License
               </p>
               <p>

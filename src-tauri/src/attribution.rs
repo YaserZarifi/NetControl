@@ -36,6 +36,13 @@ struct Frame {
     apps: Vec<AppUsage>,
     error: Option<String>,
 }
+fn session_reader(stream: TcpStream) -> std::io::Result<BufReader<TcpStream>> {
+    // Accepted sockets can inherit the listener's nonblocking mode on Windows.
+    stream.set_nonblocking(false)?;
+    stream.set_read_timeout(Some(Duration::from_secs(30)))?;
+    stream.set_write_timeout(Some(Duration::from_secs(5)))?;
+    Ok(BufReader::new(stream))
+}
 fn process_path(pid: u32, event_time: i64) -> String {
     unsafe {
         let Ok(handle) = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) else {
@@ -115,7 +122,6 @@ pub fn helper(port: u16, token: &str) -> Result<(), String> {
     stream
         .set_write_timeout(Some(Duration::from_secs(5)))
         .map_err(|e| e.to_string())?;
-    writeln!(stream, "{token}").map_err(|e| e.to_string())?;
     let data = Arc::new(Mutex::new(HashMap::new()));
     let failures = Arc::new(AtomicBool::new(false));
     let tcp = Provider::kernel(&kernel_providers::TCP_IP_PROVIDER)
@@ -140,6 +146,7 @@ pub fn helper(port: u16, token: &str) -> Result<(), String> {
     {
         Ok(trace) => trace,
         Err(e) => {
+            let _ = writeln!(stream, "{token}");
             let _ = writeln!(
                 stream,
                 "{}",
@@ -152,6 +159,8 @@ pub fn helper(port: u16, token: &str) -> Result<(), String> {
             return Err(format!("{e:?}"));
         }
     };
+    // Authenticate only once tracing is ready, before the normal frame timeout starts.
+    writeln!(stream, "{token}").map_err(|e| e.to_string())?;
     loop {
         let mut ping = [0u8; 1];
         if stream.read_exact(&mut ping).is_err() {
@@ -219,17 +228,15 @@ pub fn enable(state: Arc<crate::AppState>) -> Result<(), String> {
                 }
                 match listener.accept() {
                     Ok((stream, _)) => {
-                        stream
-                            .set_read_timeout(Some(Duration::from_secs(3)))
-                            .map_err(|e| e.to_string())?;
-                        stream
-                            .set_write_timeout(Some(Duration::from_secs(3)))
-                            .map_err(|e| e.to_string())?;
-                        let mut reader = BufReader::new(stream);
+                        let mut reader = session_reader(stream).map_err(|e| e.to_string())?;
                         let mut hello = String::new();
                         if reader.by_ref().take(128).read_line(&mut hello).is_ok()
                             && hello.trim() == token
                         {
+                            reader
+                                .get_mut()
+                                .set_read_timeout(Some(Duration::from_secs(5)))
+                                .map_err(|e| e.to_string())?;
                             break reader;
                         }
                     }
@@ -289,6 +296,69 @@ pub fn enable(state: Arc<crate::AppState>) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn waits_for_delayed_handshake_and_fragmented_frames() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let mut peer = TcpStream::connect(listener.local_addr().unwrap()).unwrap();
+        let (stream, _) = listener.accept().unwrap();
+        // Reproduce Windows inheritance independently of the host's accept behavior.
+        stream.set_nonblocking(true).unwrap();
+        let sender = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(150));
+            peer.write_all(b"ready-token\n").unwrap();
+            let mut ping = [0u8; 1];
+            peer.read_exact(&mut ping).unwrap();
+            std::thread::sleep(Duration::from_millis(150));
+            peer.write_all(b"{\"apps\":[],").unwrap();
+            std::thread::sleep(Duration::from_millis(150));
+            peer.write_all(b"\"error\":null}\n").unwrap();
+        });
+        let mut reader = session_reader(stream).unwrap();
+        let mut token = String::new();
+        reader.read_line(&mut token).unwrap();
+        assert_eq!(token.trim(), "ready-token");
+        reader.get_mut().write_all(&[1]).unwrap();
+        let mut line = String::new();
+        reader.read_line(&mut line).unwrap();
+        let frame: Frame = serde_json::from_str(&line).unwrap();
+        assert!(frame.apps.is_empty() && frame.error.is_none());
+        sender.join().unwrap();
+    }
+    #[test]
+    #[ignore = "Requires administrator access for the real tracing helper session"]
+    fn real_helper_authenticates_polls_and_shuts_down() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let token = uuid::Uuid::new_v4().simple().to_string();
+        let helper_token = token.clone();
+        let worker = std::thread::spawn(move || helper(port, &helper_token));
+        let deadline = Instant::now() + Duration::from_secs(10);
+        let stream = loop {
+            match listener.accept() {
+                Ok((stream, _)) => break stream,
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                    assert!(Instant::now() < deadline, "Helper connection timed out");
+                    std::thread::sleep(Duration::from_millis(20));
+                }
+                Err(e) => panic!("Helper accept failed: {e}"),
+            }
+        };
+        let mut reader = session_reader(stream).unwrap();
+        let mut hello = String::new();
+        reader.read_line(&mut hello).unwrap();
+        assert_eq!(hello.trim(), token);
+        for _ in 0..2 {
+            reader.get_mut().write_all(&[1]).unwrap();
+            let mut line = String::new();
+            reader.read_line(&mut line).unwrap();
+            let frame: Frame = serde_json::from_str(&line).unwrap();
+            assert!(frame.error.is_none(), "Helper reported {:?}", frame.error);
+        }
+        drop(reader);
+        worker.join().unwrap().unwrap();
+    }
     #[test]
     #[ignore = "Requires an administrator account and Windows kernel event tracing"]
     fn attributes_real_tcp_and_udp_transfers() {

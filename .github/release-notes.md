@@ -1,3 +1,5 @@
+Fixes Windows error 10035 when enabling application monitoring. The helper connection now explicitly uses blocking I/O and signals readiness only after event tracing has started. Includes new regression tests for delayed responses, fragmented frames, and the real tracing-helper session.
+
 NetControl is a local Windows network usage monitor with application firewall controls.
 
 ### Included

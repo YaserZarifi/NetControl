@@ -68,7 +68,7 @@ function previewSettings(): Settings {
 export async function loadFoundation(): Promise<Foundation> {
   return desktop
     ? invoke("get_foundation")
-    : { version: "0.1.0", databaseReady: false, settings: previewSettings() };
+    : { version: "0.1.1", databaseReady: false, settings: previewSettings() };
 }
 export async function saveSettings(settings: Settings): Promise<void> {
   if (desktop) await invoke("save_settings", { settings });
