@@ -22,7 +22,7 @@ rusqlite = { version = "0.37", features = ["bundled"] }
 
 chrono = { version = "0.4", features = ["serde"] }
 hex = "0.4"
-sha2 = "0.10"
+sha2 = "0.11"
 uuid = { version = "1", features = ["v4"] }
 winreg = "0.55"
 ferrisetw = "1.2"
